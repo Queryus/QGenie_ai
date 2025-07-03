@@ -1,0 +1,42 @@
+name: Create and Upload Release Asset
+
+on:
+  push:
+    tags:
+      - 'v*' # 'v'로 시작하는 태그가 푸시될 때 실행
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-latest # 빌드를 실행할 환경
+    steps:
+      # 1. 소스 코드 체크아웃
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # 2. 파이썬 환경 설정
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11' # 프로젝트에서 사용하는 파이썬 버전
+
+      # 3. 의존성 설치
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # 4. PyInstaller로 실행 파일 빌드
+      - name: Build with PyInstaller
+        run: pyinstaller --name health_checker --onefile --noconsole health_check.py
+
+      # 5. 다른 레포지토리에 실행 파일 업로드
+      - name: Upload asset to another repository
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.PAT_TOKEN }} # 아래에서 설명할 PAT 토큰
+          file: dist/health_checker # 빌드된 실행 파일 경로
+          asset_name: health_checker-linux # 릴리즈에 표시될 파일 이름
+          tag: ${{ github.ref }} # 현재 푸시된 태그 (예: v1.0.0)
+          overwrite: true
+          # 파일을 업로드할 대상 레포지토리 지정
+          repo_name: ${{ github.repository_owner }}/[대상-레포지토리-이름]
