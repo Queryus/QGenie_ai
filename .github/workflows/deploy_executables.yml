@@ -27,8 +27,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Set executable name by OS
-        id: set_name
+      # OS에 따라 실행 파일 이름과 배포 경로를 동적으로 설정
+      - name: Set environment variables by OS
         run: |
           if [ "${{ runner.os }}" == "macOS" ]; then
             echo "EXE_NAME=health_checker" >> $GITHUB_ENV
@@ -38,18 +38,18 @@ jobs:
             echo "DEST_DIR=resources/win" >> $GITHUB_ENV
           fi
 
+      # src/main.py를 빌드하도록 경로 수정
       - name: Build executable with PyInstaller
         run: pyinstaller src/main.py --name ${{ env.EXE_NAME }} --onefile --noconsole
 
-      - name: Push to Front Repository
-        uses: cpina/github-action-push-to-another-repo@v1.6.0
-        env:
-          API_TOKEN_GITHUB: ${{ secrets.PAT_FOR_FRONT_REPO }}
+      # 다른 레포지토리로 빌드된 파일 푸시 (안정적인 액션으로 교체)
+      - name: Deploy to Front Repository
+        uses: JamesIves/github-pages-deploy-action@v4
         with:
-          source-files: 'dist/${{ env.EXE_NAME }}'
-          destination-repo: 'AskQL/Front'
-          destination-branch: 'master'
-          destination-dir: '${{ env.DEST_DIR }}'
+          token: ${{ secrets.PAT_FOR_FRONT_REPO }}
+          repository-name: AskQL/Front
+          branch: master
+          folder: dist # 배포할 파일이 있는 폴더
+          target-folder: ${{ env.DEST_DIR }} # Front 레포지토리의 대상 폴더
+          clean: false # 대상 폴더를 비우지 않음
           commit-message: 'Deploy AI executable ${{ github.ref_name }} from ${{ runner.os }}'
-          user-email: 'actions@github.com'
-          user-name: 'github-actions'
