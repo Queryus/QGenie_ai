@@ -27,7 +27,7 @@ jobs:
 
       # 4. PyInstaller로 실행 파일 빌드
       - name: Build with PyInstaller
-        run: pyinstaller --name health_checker --onefile --noconsole health_check.py
+        run: pyinstaller src/main.py --name ai --onefile --noconsole
 
       # 5. 다른 레포지토리에 실행 파일 업로드
       - name: Upload asset to another repository
