@@ -1,1 +1,14 @@
-.venv
+# 1. 운영체제 생성 파일 (OS generated files)
+.DS_Store
+
+# 2. 가상환경 파일
+*venv*
+
+# 3. 빌드 결과물 (Build output)
+*.spec
+build
+dist
+
+# 4. 기타
+.vscode
+.idea
