@@ -37,9 +37,6 @@
     
     # 실행 파일 빌드
     pyinstaller src/main.py --name ai --onefile --noconsole
-    
-    # 실행 파일 실행
-    ./dist/ai
     ```
 
 ---
@@ -78,11 +75,8 @@ GitHub에서 새로운 태그를 발행하면 파이프라인이 자동으로 �
 이 레포지토리에는 간단한 헬스체크 서버가 포함되어 있습니다. 아래 명령어로 실행 파일을 빌드하여 서버 상태를 확인할 수 있습니다.
 
 ```bash
-# 실행 파일 빌드
-pyinstaller src/main.py --name ai --onefile --noconsole
-
 # 빌드된 파일 실행 (dist 폴더에 생성됨)
 ./dist/ai
 
-curl http://localhost:33332/health
+curl http://localhost:<할당된 포트>/health
 ```
