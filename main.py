@@ -34,8 +34,8 @@ try:
     db = SQLDatabase.from_uri(DATABASE_URI)
     print(f"Successfully connected to MySQL database: {MYSQL_DB_NAME}")
     # 데이터베이스 스키마 정보 미리 로드 (Agent가 더 잘 이해하도록 돕기 위함)
-    db.get_usable_tables()
-    db.get_table_info() # 이 정보는 Agent가 내부적으로 활용합니다.
+    # db.get_usable_tables()
+    # db.get_table_info() # 이 정보는 Agent가 내부적으로 활용합니다.
 except Exception as e:
     print(f"Error connecting to MySQL database: {e}")
     print("Please check your MySQL server is running and connection details are correct.")
