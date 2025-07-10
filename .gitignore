@@ -14,3 +14,4 @@ dist
 .vscode
 .idea
 test.ipynb
+__pycache__
