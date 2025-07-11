@@ -3,6 +3,8 @@
 from typing import List, TypedDict, Optional
 from langchain_core.messages import BaseMessage
 from langgraph.graph import StateGraph, END
+from langchain.output_parsers.pydantic import PydanticOutputParser
+from src.schemas.sql_schemas import SqlQuery
 from src.core.db_manager import db_instance
 from src.core.llm_provider import llm_instance
 
@@ -19,14 +21,21 @@ class SqlAgentState(TypedDict):
 # --- 노드 함수 정의 ---
 def sql_generator_node(state: SqlAgentState):
     print("--- 1. SQL 생성 중 ---")
+    parser = PydanticOutputParser(pydantic_object=SqlQuery)
+
     prompt = f"""
+    You are a powerful text-to-SQL model. Your role is to generate a SQL query based on the provided database schema and user question.
+    
+    {parser.get_format_instructions()}
+    
     Schema: {state['db_schema']}
     History: {state['chat_history']}
     Question: {state['question']}
-    SQL Query:
     """
+    
     response = llm_instance.invoke(prompt)
-    state['sql_query'] = response.content
+    parsed_query = parser.invoke(response)
+    state['sql_query'] = parsed_query.query
     state['validation_error'] = None
     return state
 
