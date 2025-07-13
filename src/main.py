@@ -4,7 +4,7 @@ import socket
 from contextlib import closing
 import uvicorn
 from fastapi import FastAPI
-from src.api.v1.endpoints import chat
+from api.v1.endpoints import chat
 
 def find_free_port():
     """사용 가능한 비어있는 포트를 찾는 함수"""
