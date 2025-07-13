@@ -1,8 +1,8 @@
 # src/api/v1/endpoints/chat.py
 
 from fastapi import APIRouter, Depends
-from src.api.v1.schemas import ChatRequest, ChatResponse
-from src.services.chatbot_service import ChatbotService
+from api.v1.schemas import ChatRequest, ChatResponse
+from services.chatbot_service import ChatbotService
 
 router = APIRouter()
 

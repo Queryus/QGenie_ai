@@ -4,9 +4,9 @@ from typing import List, TypedDict, Optional
 from langchain_core.messages import BaseMessage
 from langgraph.graph import StateGraph, END
 from langchain.output_parsers.pydantic import PydanticOutputParser
-from src.schemas.sql_schemas import SqlQuery
-from src.core.db_manager import db_instance
-from src.core.llm_provider import llm_instance
+from schemas.sql_schemas import SqlQuery
+from core.db_manager import db_instance
+from core.llm_provider import llm_instance
 
 # Agent 상태 정의
 class SqlAgentState(TypedDict):

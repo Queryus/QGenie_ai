@@ -1,7 +1,7 @@
 # src/services/chatbot_service.py
 
-from src.agents.sql_agent_graph import sql_agent_app
-from src.core.db_manager import schema_instance
+from agents.sql_agent_graph import sql_agent_app
+from core.db_manager import schema_instance
 
 class ChatbotService:
     def __init__(self):
