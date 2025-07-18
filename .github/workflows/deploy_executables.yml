@@ -18,7 +18,7 @@ jobs:
           -d '{
             "username": "AI 배포 봇",
             "embeds": [{
-              "description": "**${{ github.ref_name }}** AI 모델 실행 파일 배포를 시작합니다.",
+              "description": "**${{ github.ref_name }}** AI 배포를 시작합니다.",
               "color": 2243312
             }]
           }' \
@@ -125,12 +125,13 @@ jobs:
   #      파이프라인 최종 결과 알림
   # ==================================
   finish:
-    needs: [start, build, deploy]
+    needs: deploy
     runs-on: ubuntu-latest
     if: always()
+
     steps:
       - name: Send Success Notification
-        if: success()
+        if: needs.deploy.result == 'success'
         run: |
           curl -X POST -H "Content-Type: application/json" \
           -d '{
@@ -138,24 +139,38 @@ jobs:
             "embeds": [{
               "title": "New AI Release: ${{ github.ref_name }}",
               "url": "${{ github.event.release.html_url }}",
-              "description": "**${{ github.ref_name }}** AI 실행 파일 배포가 성공적으로 완료되었습니다!",
-              "color": 3066993
+              "description": "**${{ github.ref_name }}** AI 배포가 성공적으로 완료되었습니다!",
+              "color": 5167473
             }]
           }' \
           ${{ secrets.DISCORD_WEBHOOK_URL }}
 
       - name: Send Failure Notification
-        if: failure()
+        if: contains(needs.*.result, 'failure')
         run: |
           curl -X POST -H "Content-Type: application/json" \
           -d '{
             "username": "AI 배포 봇",
             "embeds": [{
-              "title": "AI 실행 파일 배포 실패",
+              "title": "AI 배포 실패",
               "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-              "description": "**${{ github.ref_name }}** AI 실행 파일 배포 중 오류가 발생했습니다.",
-              "color": 15158332
+              "description": "**${{ github.ref_name }}** AI 배포 중 오류가 발생했습니다.",
+              "color": 15219495
             }]
           }' \
           ${{ secrets.DISCORD_WEBHOOK_URL }}
-  
+
+      - name: Send Skipped or Cancelled Notification
+        if: contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
+        run: |
+          curl -X POST -H "Content-Type: application/json" \
+          -d '{
+            "username": "AI 배포 봇",
+            "embeds": [{
+              "title": "AI 배포 미완료",
+              "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+              "description": "**${{ github.ref_name }}** AI 배포가 완료되지 않았습니다. (상태: 취소 또는 건너뜀)\n이전 단계에서 문제가 발생했을 수 있습니다.",
+              "color": 16577629
+            }]
+          }' \
+          ${{ secrets.DISCORD_WEBHOOK_URL }}  
