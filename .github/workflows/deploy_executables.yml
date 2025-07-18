@@ -6,8 +6,26 @@ on:
     types: [published]
 
 jobs:
+  # ==================================
+  #      1. 파이프라인 시작 알림
+  # ==================================
+  start:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Pipeline Start Notification
+        run: |
+          curl -X POST -H "Content-Type: application/json" \
+          -d '{
+            "username": "AI 배포 봇",
+            "embeds": [{
+              "description": "**${{ github.ref_name }}** AI 모델 실행 파일 배포를 시작합니다.",
+              "color": 2243312
+            }]
+          }' \
+          ${{ secrets.DISCORD_WEBHOOK_URL }}
   # 1단계: 각 OS에서 실행 파일을 빌드하는 잡
   build:
+    needs: start
     strategy:
       matrix:
         os: [macos-latest, windows-latest]
@@ -59,6 +77,7 @@ jobs:
         with:
           name: executable-${{ runner.os }}
           path: dist/${{ env.EXE_NAME }}
+
   # 2단계: 빌드된 실행 파일들을 Front 레포지토리에 배포하는 잡
   deploy:
     # build 잡이 성공해야 실행됨
@@ -101,3 +120,42 @@ jobs:
             git commit -m "feat: AI 실행 파일 업데이트 (${{ github.ref_name }})"
             git push
           fi
+
+  # ==================================
+  #      파이프라인 최종 결과 알림
+  # ==================================
+  finish:
+    needs: [start, build, deploy]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Send Success Notification
+        if: success()
+        run: |
+          curl -X POST -H "Content-Type: application/json" \
+          -d '{
+            "username": "AI 배포 봇",
+            "embeds": [{
+              "title": "New AI Release: ${{ github.ref_name }}",
+              "url": "${{ github.event.release.html_url }}",
+              "description": "**${{ github.ref_name }}** AI 실행 파일 배포가 성공적으로 완료되었습니다!",
+              "color": 3066993
+            }]
+          }' \
+          ${{ secrets.DISCORD_WEBHOOK_URL }}
+
+      - name: Send Failure Notification
+        if: failure()
+        run: |
+          curl -X POST -H "Content-Type: application/json" \
+          -d '{
+            "username": "AI 배포 봇",
+            "embeds": [{
+              "title": "AI 실행 파일 배포 실패",
+              "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+              "description": "**${{ github.ref_name }}** AI 실행 파일 배포 중 오류가 발생했습니다.",
+              "color": 15158332
+            }]
+          }' \
+          ${{ secrets.DISCORD_WEBHOOK_URL }}
+  
