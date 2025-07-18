@@ -12,7 +12,7 @@
 
 1.  **저장소 복제**
     ```bash
-    git clone https://github.com/AskQL/AI.git
+    git clone https://github.com/Queryus/QGenie_api.git
     ```
 
 2.  **가상 환경 생성 및 활성화**
