@@ -12,7 +12,7 @@
 
 1.  **저장소 복제**
     ```bash
-    git clone https://github.com/AskQL/AI.git
+    git clone https://github.com/Queryus/QGenie_ai.git
     ```
 
 2.  **가상 환경 생성 및 활성화**
@@ -20,8 +20,11 @@
     # 가상 환경 생성 (최초 한 번)
     python3 -m venv .venv
 
-    # 가상 환경 활성화
+    # 가상 환경 활성화 (macOS/Linux)
     source .venv/bin/activate
+    
+    # 가상 환경 활성화 (Windows)
+    .venv\Scripts\activate
     ```
 
 3.  **라이브러리 설치**
@@ -33,10 +36,14 @@
 4.  **실행파일 생성 후 확인**
     ```bash
     # 이전 빌드 결과물 삭제
-    rm -rf build dist
+    rm -rf src/main.build src/main.dist src/main.onefile-build dist
+    rm -rf main.build main.dist main.onefile-build dist
     
-    # 실행 파일 빌드
-    pyinstaller src/main.py --name ai --onefile --noconsole
+    # 실행 파일 빌드-Nuitka (macOS/Linux)
+    nuitka --follow-imports --standalone --output-filename=qgenie-ai src/main.py
+    
+    # 실행 파일 빌드-Nuitka (Windows)
+    nuitka --follow-imports --standalone --output-filename=qgenie-ai.exe src/main.py
     ```
 
 ---
@@ -78,5 +85,6 @@ GitHub에서 새로운 태그를 발행하면 파이프라인이 자동으로 �
 # 빌드된 파일 실행 (dist 폴더에 생성됨)
 ./dist/ai
 
+# 다른 터미널에서 헬스체크 요청
 curl http://localhost:<할당된 포트>/health
 ```
