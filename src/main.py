@@ -30,7 +30,7 @@ app.include_router(
 @app.get("/")
 def health_check():
     """헬스체크 엔드포인트, 서버 상태가 정상이면 'ok' 반환합니다."""
-    return {"status": "ok", "message": "Welcome to the AskQL Chatbot API!"}
+    return {"status": "ok", "message": "Welcome to the QGenie Chatbot AI!"}
 
 if __name__ == "__main__":
     # 1. 비어있는 포트 동적 할당
