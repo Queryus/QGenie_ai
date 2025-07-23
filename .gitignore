@@ -9,8 +9,6 @@
 *.spec
 build
 dist
-main.build
-main.dist
 
 # 4. 기타
 .vscode

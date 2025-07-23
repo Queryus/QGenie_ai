@@ -36,14 +36,10 @@
 4.  **실행파일 생성 후 확인**
     ```bash
     # 이전 빌드 결과물 삭제
-    rm -rf src/main.build src/main.dist src/main.onefile-build dist
-    rm -rf main.build main.dist main.onefile-build dist
+    rm -rf build dist
     
-    # 실행 파일 빌드-Nuitka (macOS/Linux)
-    nuitka --follow-imports --standalone --output-filename=qgenie-ai src/main.py
-    
-    # 실행 파일 빌드-Nuitka (Windows)
-    nuitka --follow-imports --standalone --output-filename=qgenie-ai.exe src/main.py
+    # 실행 파일 빌드
+    pyinstaller --clean --onefile --name ai src/main.py
     ```
 
 ---
