@@ -78,6 +78,7 @@ jobs:
         with:
           name: executable-${{ runner.os }}
           path: dist/${{ env.EXE_NAME }}
+          retention-days: 1
 
   # 2단계: 빌드된 실행 파일들을 Front 레포지토리에 배포하는 잡
   deploy:
@@ -117,7 +118,7 @@ jobs:
           if git diff-index --quiet HEAD; then
             echo "No changes to commit."
           else
-            git commit -m "feat: AI 실행 파일 업데이트 (${{ github.ref_name }})"
+            git commit -m "feat: Update AI executable (${{ github.ref_name }})"
             git push
           fi
 
