@@ -104,8 +104,8 @@ jobs:
       - name: Organize files
         run: |
           mkdir -p resources/mac resources/win
-          mv artifacts/executable-macOS resources/mac/qgenie-ai
-          mv artifacts/executable-Windows resources/win/qgenie-ai.exe
+          mv artifacts/executable-macOS/qgenie-ai resources/mac/
+          mv artifacts/executable-Windows/qgenie-ai.exe resources/win/
 
       # 4. 변경된 파일들을 Front 리포지토리에 커밋하고 푸시합니다.
       - name: Commit and push changes
