@@ -11,6 +11,7 @@ jobs:
   #      1. 파이프라인 시작 알림
   # ==================================
   start:
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
     steps:
       - name: Send Pipeline Start Notification
@@ -26,7 +27,6 @@ jobs:
           ${{ secrets.DISCORD_WEBHOOK_URL }}
   # 1단계: 각 OS에서 실행 파일을 빌드하는 잡
   build:
-    needs: start
     strategy:
       matrix:
         os: [macos-latest, windows-latest]
@@ -84,6 +84,7 @@ jobs:
   deploy:
     # build 잡이 성공해야 실행됨
     needs: build
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
     steps:
       # 1. 배포 대상인 Front 리포지토리의 코드를 가져옵니다.
@@ -128,7 +129,7 @@ jobs:
   finish:
     needs: deploy
     runs-on: ubuntu-latest
-    if: always()
+    if: always() && github.event_name == 'release'
 
     steps:
       - name: Send Success Notification
