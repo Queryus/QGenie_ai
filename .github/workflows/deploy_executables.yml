@@ -11,6 +11,7 @@ jobs:
   #      1. 파이프라인 시작 알림
   # ==================================
   start:
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
     steps:
       - name: Send Pipeline Start Notification
@@ -26,7 +27,6 @@ jobs:
           ${{ secrets.DISCORD_WEBHOOK_URL }}
   # 1단계: 각 OS에서 실행 파일을 빌드하는 잡
   build:
-    needs: start
     strategy:
       matrix:
         os: [macos-latest, windows-latest]
@@ -78,11 +78,13 @@ jobs:
         with:
           name: executable-${{ runner.os }}
           path: dist/${{ env.EXE_NAME }}
+          retention-days: 1
 
   # 2단계: 빌드된 실행 파일들을 Front 레포지토리에 배포하는 잡
   deploy:
     # build 잡이 성공해야 실행됨
     needs: build
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
     steps:
       # 1. 배포 대상인 Front 리포지토리의 코드를 가져옵니다.
@@ -104,8 +106,8 @@ jobs:
       - name: Organize files
         run: |
           mkdir -p resources/mac resources/win
-          mv artifacts/executable-macOS resources/mac/qgenie-ai
-          mv artifacts/executable-Windows resources/win/qgenie-ai.exe
+          mv artifacts/executable-macOS/qgenie-ai resources/mac/
+          mv artifacts/executable-Windows/qgenie-ai.exe resources/win/
 
       # 4. 변경된 파일들을 Front 리포지토리에 커밋하고 푸시합니다.
       - name: Commit and push changes
@@ -117,7 +119,7 @@ jobs:
           if git diff-index --quiet HEAD; then
             echo "No changes to commit."
           else
-            git commit -m "feat: AI 실행 파일 업데이트 (${{ github.ref_name }})"
+            git commit -m "feat: Update AI executable (${{ github.ref_name }})"
             git push
           fi
 
@@ -127,7 +129,7 @@ jobs:
   finish:
     needs: deploy
     runs-on: ubuntu-latest
-    if: always()
+    if: always() && github.event_name == 'release'
 
     steps:
       - name: Send Success Notification
