@@ -15,3 +15,4 @@ dist
 .idea
 test.ipynb
 __pycache__
+workflow_graph.png

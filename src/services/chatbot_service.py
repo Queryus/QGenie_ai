@@ -3,7 +3,7 @@
 from agents.sql_agent_graph import sql_agent_app
 from core.db_manager import schema_instance
 
-class ChatbotService:
+class ChatbotService():
     def __init__(self):
         self.db_schema = schema_instance
 
@@ -12,7 +12,9 @@ class ChatbotService:
         initial_state = {
             "question": user_question,
             "chat_history": [],
-            "db_schema": self.db_schema
+            "db_schema": self.db_schema,
+            "validation_error_count": 0,
+            "execution_error_count": 0
         }
         
         # 2. 그래프 실행
