@@ -1,14 +1,34 @@
 # src/agents/sql_agent_graph.py
 
+import os
+import sys
 from typing import List, TypedDict, Optional
 from langchain_core.messages import BaseMessage
 from langgraph.graph import StateGraph, END
 from langchain.output_parsers.pydantic import PydanticOutputParser
+from langchain.prompts import load_prompt
 from schemas.sql_schemas import SqlQuery
 from core.db_manager import db_instance
 from core.llm_provider import llm_instance
 
+# --- PyInstaller 경로 해결 함수 ---
+def resource_path(relative_path):
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        # 개발 환경에서는 src 폴더를 기준으로 경로 설정
+        base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    return os.path.join(base_path, relative_path)
+
+# --- 상수 정의 ---
 MAX_ERROR_COUNT = 3
+PROMPT_VERSION = "v1"
+PROMPT_DIR = os.path.join("prompts", PROMPT_VERSION, "sql_agent")
+
+# --- 프롬프트 로드 ---
+SQL_GENERATOR_PROMPT = load_prompt(resource_path(os.path.join(PROMPT_DIR, "sql_generator.yaml")))
+RESPONSE_SYNTHESIZER_PROMPT = load_prompt(resource_path(os.path.join(PROMPT_DIR, "response_synthesizer.yaml")))
 
 # Agent 상태 정의
 class SqlAgentState(TypedDict):
@@ -27,7 +47,7 @@ def sql_generator_node(state: SqlAgentState):
     print("--- 1. SQL 생성 중 ---")
     parser = PydanticOutputParser(pydantic_object=SqlQuery)
 
-     # --- 에러 피드백 컨텍스트 생성 ---
+    # --- 에러 피드백 컨텍스트 생성 ---
     error_feedback = ""
     # 1. 검증 오류가 있었을 경우
     if state.get("validation_error") and state.get("validation_error_count", 0) > 0:
@@ -44,18 +64,13 @@ def sql_generator_node(state: SqlAgentState):
         Please correct the SQL query based on the error.
         """
     
-    prompt = f"""
-    You are a powerful text-to-SQL model. Your role is to generate a SQL query based on the provided database schema and user question.
-    
-    {parser.get_format_instructions()}
-    
-    Schema: {state['db_schema']}
-    History: {state['chat_history']}
-
-    {error_feedback}
-
-    Question: {state['question']}
-    """
+    prompt = SQL_GENERATOR_PROMPT.format(
+        format_instructions=parser.get_format_instructions(),
+        db_schema=state['db_schema'],
+        chat_history=state['chat_history'],
+        question=state['question'],
+        error_feedback=error_feedback
+    )
 
     response = llm_instance.invoke(prompt)
     parsed_query = parser.invoke(response)
@@ -98,29 +113,39 @@ def sql_executor_node(state: SqlAgentState):
 def response_synthesizer_node(state: SqlAgentState):
     print("--- 4. 최종 답변 생성 중 ---")
 
-    if state.get('validation_error_count', 0) >= MAX_ERROR_COUNT:
-        message = f"SQL 검증에 {MAX_ERROR_COUNT}회 이상 실패했습니다. 마지막 오류: {state.get('validation_error')}"
-    elif state.get('execution_error_count', 0) >= MAX_ERROR_COUNT:
-        message = f"SQL 실행에 {MAX_ERROR_COUNT}회 이상 실패했습니다. 마지막 오류: {state.get('execution_result')}"
-    else:
-        message = f"SQL Result: {state['execution_result']}"
+    is_failure = state.get('validation_error_count', 0) >= MAX_ERROR_COUNT or \
+                 state.get('execution_error_count', 0) >= MAX_ERROR_COUNT
 
-    prompt = f"""
-    Question: {state['question']}
-    SQL: {state['sql_query']}
-    {message}
-    
-    Based on the information above, provide a final answer to the user in Korean.
-    If there was an error, explain the problem to the user in a friendly way.
-    사용자 질문과 쿼리가 어떤 관계가 있는지 같이 설명해
-    """
+    if is_failure:
+        if state.get('validation_error_count', 0) >= MAX_ERROR_COUNT:
+            error_type = "SQL 검증"
+            error_details = state.get('validation_error')
+        else:
+            error_type = "SQL 실행"
+            error_details = state.get('execution_result')
+        
+        context_message = f"""
+        An attempt to answer the user's question failed after multiple retries.
+        Failure Type: {error_type}
+        Last Error: {error_details}
+        """
+    else:
+        context_message = f"""
+        Successfully executed the SQL query to answer the user's question.
+        SQL Query: {state['sql_query']}
+        SQL Result: {state['execution_result']}
+        """
+
+    prompt = RESPONSE_SYNTHESIZER_PROMPT.format(
+        question=state['question'],
+        context_message=context_message
+    )
     response = llm_instance.invoke(prompt)
     state['final_response'] = response.content
     return state
 
 # --- 엣지 함수 정의 ---
 def should_execute_sql(state: SqlAgentState):
-    """SQL 검증 후, 실행할지/재생성할지/포기할지 결정합니다."""
     if state.get("validation_error_count", 0) >= MAX_ERROR_COUNT:
         print(f"--- 검증 실패 {MAX_ERROR_COUNT}회 초과: 답변 생성으로 이동 ---")
         return "synthesize_failure"
@@ -131,7 +156,6 @@ def should_execute_sql(state: SqlAgentState):
     return "execute"
 
 def should_retry_or_respond(state: SqlAgentState):
-    """SQL 실행 후, 성공/재시도/포기 여부를 결정합니다."""
     if state.get("execution_error_count", 0) >= MAX_ERROR_COUNT:
         print(f"--- 실행 실패 {MAX_ERROR_COUNT}회 초과: 답변 생성으로 이동 ---")
         return "synthesize_failure"
