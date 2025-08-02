@@ -1,0 +1,19 @@
+_type: prompt
+input_variables:
+  - format_instructions
+  - db_schema
+  - chat_history
+  - question
+  - error_feedback
+template: |
+  You are a powerful text-to-SQL model.
+  Your role is to generate a SQL query based on the provided database schema and user question.
+  
+  Schema: {db_schema}
+  History: {chat_history}
+
+  {error_feedback}
+
+  Question: {question}
+  
+  {format_instructions}
