@@ -6,6 +6,7 @@ from typing import List, TypedDict, Optional
 from langchain_core.messages import BaseMessage
 from langgraph.graph import StateGraph, END
 from langchain.output_parsers.pydantic import PydanticOutputParser
+from langchain_core.output_parsers import StrOutputParser
 from langchain.prompts import load_prompt
 from schemas.sql_schemas import SqlQuery
 from core.db_manager import db_instance
@@ -27,6 +28,7 @@ PROMPT_VERSION = "v1"
 PROMPT_DIR = os.path.join("prompts", PROMPT_VERSION, "sql_agent")
 
 # --- 프롬프트 로드 ---
+INTENT_CLASSIFIER_PROMPT = load_prompt(resource_path(os.path.join(PROMPT_DIR, "intent_classifier.yaml")))
 SQL_GENERATOR_PROMPT = load_prompt(resource_path(os.path.join(PROMPT_DIR, "sql_generator.yaml")))
 RESPONSE_SYNTHESIZER_PROMPT = load_prompt(resource_path(os.path.join(PROMPT_DIR, "response_synthesizer.yaml")))
 
@@ -35,6 +37,7 @@ class SqlAgentState(TypedDict):
     question: str
     chat_history: List[BaseMessage]
     db_schema: str
+    intent: str
     sql_query: str
     validation_error: Optional[str]
     validation_error_count: int
@@ -43,6 +46,18 @@ class SqlAgentState(TypedDict):
     final_response: str
 
 # --- 노드 함수 정의 ---
+def intent_classifier_node(state: SqlAgentState):
+    print("--- 0. 의도 분류 중 ---")
+    chain = INTENT_CLASSIFIER_PROMPT | llm_instance | StrOutputParser()
+    intent = chain.invoke({"question": state['question']})
+    state['intent'] = intent
+    return state
+
+def unsupported_question_node(state: SqlAgentState):
+    print("--- SQL 관련 없는 질문 ---")
+    state['final_response'] = "죄송합니다, 해당 질문에는 답변할 수 없습니다. 데이터베이스 관련 질문만 가능합니다."
+    return state
+
 def sql_generator_node(state: SqlAgentState):
     print("--- 1. SQL 생성 중 ---")
     parser = PydanticOutputParser(pydantic_object=SqlQuery)
@@ -73,7 +88,7 @@ def sql_generator_node(state: SqlAgentState):
     )
 
     response = llm_instance.invoke(prompt)
-    parsed_query = parser.invoke(response)
+    parsed_query = parser.invoke(response.content)
     state['sql_query'] = parsed_query.query
     state['validation_error'] = None
     state['execution_result'] = None
@@ -145,6 +160,13 @@ def response_synthesizer_node(state: SqlAgentState):
     return state
 
 # --- 엣지 함수 정의 ---
+def route_after_intent_classification(state: SqlAgentState):
+    if state['intent'] == "SQL":
+        print("--- 의도: SQL 관련 질문 ---")
+        return "sql_generator"
+    print("--- 의도: SQL과 관련 없는 질문 ---")
+    return "unsupported_question"
+
 def should_execute_sql(state: SqlAgentState):
     if state.get("validation_error_count", 0) >= MAX_ERROR_COUNT:
         print(f"--- 검증 실패 {MAX_ERROR_COUNT}회 초과: 답변 생성으로 이동 ---")
@@ -168,12 +190,26 @@ def should_retry_or_respond(state: SqlAgentState):
 # --- 그래프 구성 ---
 def create_sql_agent_graph() -> StateGraph:
     graph = StateGraph(SqlAgentState)
+    
+    graph.add_node("intent_classifier", intent_classifier_node)
+    graph.add_node("unsupported_question", unsupported_question_node)
     graph.add_node("sql_generator", sql_generator_node)
     graph.add_node("sql_validator", sql_validator_node)
     graph.add_node("sql_executor", sql_executor_node)
     graph.add_node("response_synthesizer", response_synthesizer_node)
     
-    graph.set_entry_point("sql_generator")
+    graph.set_entry_point("intent_classifier")
+    
+    graph.add_conditional_edges(
+        "intent_classifier",
+        route_after_intent_classification,
+        {
+            "sql_generator": "sql_generator",
+            "unsupported_question": "unsupported_question"
+        }
+    )
+    graph.add_edge("unsupported_question", END)
+    
     graph.add_edge("sql_generator", "sql_validator")
 
     graph.add_conditional_edges("sql_validator", should_execute_sql, {
