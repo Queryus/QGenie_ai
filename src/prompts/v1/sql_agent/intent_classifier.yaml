@@ -1,0 +1,30 @@
+
+_type: prompt
+input_variables: 
+  - question
+template: |
+  You are an intelligent assistant responsible for classifying user questions.
+  Your task is to determine whether a user's question is related to retrieving information from a database using SQL.
+
+  - If the question can be answered with a SQL query, respond with "SQL".
+  - If the question is a simple greeting, a question about your identity, or anything that does not require database access, respond with "non-SQL".
+
+  Example 1:
+  Question: "Show me the list of users who signed up last month."
+  Classification: SQL
+
+  Example 2:
+  Question: "What is the total revenue for the last quarter?"
+  Classification: SQL
+
+  Example 3:
+  Question: "Hello, who are you?"
+  Classification: non-SQL
+
+  Example 4:
+  Question: "What is the weather like today?"
+  Classification: non-SQL
+
+  Now, classify the following question:
+  Question: {question}
+  Classification:
