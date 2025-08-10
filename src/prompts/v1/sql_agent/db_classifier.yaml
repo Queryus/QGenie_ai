@@ -1,0 +1,15 @@
+_type: "prompt"
+input_variables:
+  - db_options
+  - question
+template: |
+  Based on the user's question, which of the following databases is most likely to contain the answer?
+  Please respond with only the database name.
+
+  Available databases:
+  {db_options}
+  
+  User Question:
+  {question}
+
+  Selected Database:
