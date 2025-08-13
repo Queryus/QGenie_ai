@@ -23,5 +23,6 @@ def handle_chat_request(
     Returns:
         ChatRespone: 챗봇 응답
     """
-    final_answer = service.handle_request(request.question)
+    final_answer = service.handle_request(request.question, request.chat_history)
+
     return ChatResponse(answer=final_answer)

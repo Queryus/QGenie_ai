@@ -1,24 +1,34 @@
 # src/services/chatbot_service.py
 
 from agents.sql_agent_graph import sql_agent_app
-from core.db_manager import schema_instance
+from api.v1.schemas.chatbot_schemas import ChatMessage # --- 추가된 부분 ---
+from langchain_core.messages import HumanMessage, AIMessage, BaseMessage # --- 추가된 부분 ---
+from typing import List, Optional # --- 추가된 부분 ---
+#from core.db_manager import schema_instance
 
 class ChatbotService():
-    def __init__(self):
-        self.db_schema = schema_instance
+    # TODO: schema API 요청
+    # def __init__(self):
+    #     self.db_schema = schema_instance
 
-    def handle_request(self, user_question: str) -> str:
-        # 1. 에이전트 그래프에 전달할 초기 상태 구성
+    def handle_request(self, user_question: str, chat_history: Optional[List[ChatMessage]] = None) -> dict:
+        
+        langchain_messages: List[BaseMessage] = []
+        if chat_history:
+            for message in chat_history:
+                if message.role == 'user':
+                    langchain_messages.append(HumanMessage(content=message.content))
+                elif message.role == 'assistant':
+                    langchain_messages.append(AIMessage(content=message.content))
+        
         initial_state = {
             "question": user_question,
-            "chat_history": [],
-            "db_schema": self.db_schema,
+            "chat_history": langchain_messages,
+            # "db_schema": self.db_schema,
             "validation_error_count": 0,
             "execution_error_count": 0
         }
         
-        # 2. 그래프 실행
         final_state = sql_agent_app.invoke(initial_state)
-        final_response = final_state['final_response']
         
-        return final_response
+        return final_state['final_response']
