@@ -1,4 +1,4 @@
-# src/api/v1/schemas.py
+# src/api/v1/schemas/chatbot_schemas.py
 
 from pydantic import BaseModel
 

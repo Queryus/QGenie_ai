@@ -4,7 +4,7 @@ import socket
 from contextlib import closing
 import uvicorn
 from fastapi import FastAPI
-from api.v1.endpoints import chat
+from api.v1.endpoints import chat, annotator
 
 def find_free_port():
     """사용 가능한 비어있는 포트를 찾는 함수"""
@@ -25,6 +25,13 @@ app.include_router(
     chat.router, 
     prefix="/api/v1", 
     tags=["Chatbot"]
+)
+
+# '/api/v1' 경로에 annotator 라우터 포함
+app.include_router(
+    annotator.router, 
+    prefix="/api/v1", 
+    tags=["Annotator"]
 )
 
 @app.get("/")
