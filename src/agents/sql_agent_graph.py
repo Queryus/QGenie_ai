@@ -91,6 +91,7 @@ def db_classifier_node(state: SqlAgentState):
     chain = DB_CLASSIFIER_PROMPT | llm_instance | StrOutputParser()
     selected_db_name = chain.invoke({
         "db_options": db_options,
+        "chat_history": state['chat_history'],
         "question": state['question']
     })
     
@@ -199,6 +200,7 @@ def response_synthesizer_node(state: SqlAgentState):
 
     prompt = RESPONSE_SYNTHESIZER_PROMPT.format(
         question=state['question'],
+        chat_history=state['chat_history'],
         context_message=context_message
     )
     response = llm_instance.invoke(prompt)

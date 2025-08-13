@@ -1,6 +1,7 @@
 _type: prompt
 input_variables:
   - question
+  - chat_history
   - context_message
 template: |
   You are a friendly and helpful database assistant chatbot.
@@ -11,6 +12,9 @@ template: |
 
   Context:
   {context_message}
+  
+  conversation History:
+  {chat_history}
 
   Instructions:
   - If the process was successful:
