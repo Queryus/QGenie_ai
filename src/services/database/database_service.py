@@ -52,7 +52,7 @@ class DatabaseService:
             # 폴백: 기본 스키마 반환
             return await self.get_fallback_schema(db_name)
     
-    async def execute_query(self, sql_query: str, database_name: str = None) -> str:
+    async def execute_query(self, sql_query: str, database_name: str = None, user_db_id: str = None) -> str:
         """SQL 쿼리를 실행하고 결과를 반환합니다."""
         try:
             if not database_name:
@@ -65,20 +65,17 @@ class DatabaseService:
             response = await api_client.execute_query(
                 sql_query=sql_query,
                 database_name=database_name,
-                timeout=30
+                user_db_id=user_db_id
             )
             
-            if response.success:
-                result = response.result or "쿼리 실행 결과가 없습니다."
-                if response.execution_time:
-                    logger.info(f"Query executed successfully in {response.execution_time}s")
-                if response.row_count is not None:
-                    logger.info(f"Query returned {response.row_count} rows")
-                return result
+            # 백엔드 응답 코드 확인
+            if response.code == "2400":
+                logger.info(f"Query executed successfully: {response.message}")
+                return "쿼리가 성공적으로 실행되었습니다."
             else:
-                error_msg = response.error or "알 수 없는 오류"
-                logger.error(f"Query execution failed: {error_msg}")
-                return f"쿼리 실행 실패: {error_msg}"
+                error_msg = f"쿼리 실행 실패: {response.message} (코드: {response.code})"
+                logger.error(error_msg)
+                return error_msg
                 
         except Exception as e:
             logger.error(f"Error during query execution: {e}")

@@ -17,18 +17,15 @@ class DatabaseInfo(BaseModel):
 
 class QueryExecutionRequest(BaseModel):
     """쿼리 실행 요청 모델"""
-    sql_query: str
-    database_name: str
-    execution_timeout: int = 30
-    user_id: Optional[str] = None
+    user_db_id: str
+    database: str
+    query_text: str
 
 class QueryExecutionResponse(BaseModel):
     """쿼리 실행 응답 모델"""
-    success: bool
-    result: Optional[str] = None
-    error: Optional[str] = None
-    execution_time: Optional[float] = None
-    row_count: Optional[int] = None
+    code: str
+    message: str
+    data: bool
 
 class APIClient:
     """백엔드 API와 통신하는 클라이언트 클래스"""
@@ -51,7 +48,7 @@ class APIClient:
         """HTTP 클라이언트 연결을 닫습니다."""
         if self._client and not self._client.is_closed:
             await self._client.aclose()
-    
+    # TODO: DB 어노테이션 조회
     async def get_available_databases(self) -> List[DatabaseInfo]:
         """사용 가능한 데이터베이스 목록을 가져옵니다."""
         try:
@@ -76,7 +73,7 @@ class APIClient:
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
             raise
-    
+    # TODO: DB 스키마 조회 API 필요
     async def get_database_schema(self, database_name: str) -> str:
         """특정 데이터베이스의 스키마 정보를 가져옵니다."""
         try:
@@ -106,65 +103,50 @@ class APIClient:
         self, 
         sql_query: str, 
         database_name: str, 
-        timeout: int = 30
+        user_db_id: str = None
     ) -> QueryExecutionResponse:
         """SQL 쿼리를 Backend 서버에 전송하여 실행하고 결과를 받아옵니다."""
         try:
             logger.info(f"Sending SQL query to backend: {sql_query}")
             
             request_data = QueryExecutionRequest(
-                sql_query=sql_query,
-                database_name=database_name,
-                execution_timeout=timeout
+                user_db_id=user_db_id,
+                database=database_name,
+                query_text=sql_query
             )
             
             client = await self._get_client()
             response = await client.post(
-                f"{self.base_url}/api/query/execute/actions",
+                f"{self.base_url}/api/query/execute/test",
                 json=request_data.model_dump(),
                 headers=self.headers,
-                timeout=httpx.Timeout(timeout + 5)
+                timeout=httpx.Timeout(35.0)  # 고정 타임아웃
             )
             
-            if response.status_code == 200:
-                data = response.json()
-                result = QueryExecutionResponse(**data)
-                logger.info(f"Query executed successfully in {result.execution_time}s")
-                return result
+            response.raise_for_status()  # HTTP 에러 시 예외 발생
+            
+            data = response.json()
+            result = QueryExecutionResponse(**data)
+            
+            if result.code == "2400":
+                logger.info(f"Query executed successfully: {result.message}")
             else:
-                error_data = response.json()
-                error_msg = error_data.get("error", f"HTTP {response.status_code} error")
-                logger.error(f"Backend API error: {error_msg}")
-                
-                return QueryExecutionResponse(
-                    success=False,
-                    error=error_msg
-                )
+                logger.warning(f"Query execution returned non-success code: {result.code} - {result.message}")
+            
+            return result
                 
         except httpx.TimeoutException:
             logger.error("Backend API 요청 시간 초과")
-            return QueryExecutionResponse(
-                success=False,
-                error="쿼리 실행 시간 초과: Backend 서버 응답이 늦습니다."
-            )
+            raise
         except httpx.ConnectError:
             logger.error("Backend 서버 연결 실패")
-            return QueryExecutionResponse(
-                success=False,
-                error="Backend 서버에 연결할 수 없습니다. 서버 상태를 확인해주세요."
-            )
+            raise
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTP error occurred: {e.response.status_code} - {e.response.text}")
-            return QueryExecutionResponse(
-                success=False,
-                error=f"HTTP 오류: {e.response.status_code}"
-            )
+            raise
         except Exception as e:
             logger.error(f"Unexpected error during query execution: {e}")
-            return QueryExecutionResponse(
-                success=False,
-                error=f"쿼리 실행 중 예상치 못한 오류: {e}"
-            )
+            raise
     
     async def health_check(self) -> bool:
         """API 서버 상태를 확인합니다."""
@@ -178,7 +160,7 @@ class APIClient:
         except Exception as e:
             logger.error(f"Health check failed: {e}")
             return False
-    
+    # TODO: API 키 호출 API 필요
     async def get_openai_api_key(self) -> str:
         """백엔드에서 OpenAI API 키를 가져옵니다."""
         try:
