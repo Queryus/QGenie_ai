@@ -1,4 +1,5 @@
-# src/schemas/sql_schemas.py
+# src/schemas/agent/sql_schemas.py
+
 from pydantic import BaseModel, Field
 
 class SqlQuery(BaseModel):
