@@ -110,13 +110,23 @@ class SqlAgentGraph:
                 'final_response': f"죄송합니다. 처리 중 오류가 발생했습니다: {e}"
             }
     
-    def get_graph_visualization(self) -> bytes:
-        """그래프의 시각화 이미지를 반환합니다."""
-        if self._graph is None:
-            self.create_graph()
-        
+    def save_graph_visualization(self, file_path: str = "sql_agent_graph.png") -> bool:
+        """그래프 시각화를 파일로 저장합니다."""
         try:
-            return self._graph.get_graph(xray=True).draw_mermaid_png()
+            if self._graph is None:
+                self.create_graph()
+            
+            # PNG 이미지 생성
+            png_data = self._graph.get_graph(xray=True).draw_mermaid_png()
+            
+            # 파일로 저장
+            with open(file_path, "wb") as f:
+                f.write(png_data)
+            
+            print(f"그래프 시각화가 {file_path}에 저장되었습니다.")
+            return True
+            
         except Exception as e:
-            print(f"그래프 시각화 생성 실패: {e}")
-            return None
+            print(f"그래프 시각화 저장 실패: {e}")
+            return False
+    
