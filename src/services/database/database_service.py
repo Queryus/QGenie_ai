@@ -28,13 +28,13 @@ class DatabaseService:
                 api_client = await self._get_api_client()
                 self._cached_databases = await api_client.get_available_databases()
                 logger.info(f"Cached {len(self._cached_databases)} databases")
-            
-            return self._cached_databases
+                return self._cached_databases, False  # API에서 가져옴
             
         except Exception as e:
             logger.error(f"Failed to fetch databases: {e}")
             # 폴백: 하드코딩된 데이터 반환
-            return await self._get_fallback_databases()
+            fallback_data = await self._get_fallback_databases()
+            return fallback_data, True  # fallback 사용됨
     
     async def get_schema_for_db(self, db_name: str) -> str:
         """특정 데이터베이스의 스키마를 가져옵니다."""
@@ -44,13 +44,13 @@ class DatabaseService:
                 schema = await api_client.get_database_schema(db_name)
                 self._cached_schemas[db_name] = schema
                 logger.info(f"Cached schema for database: {db_name}")
-            
-            return self._cached_schemas[db_name]
+                return schema, False  # API에서 가져옴
             
         except Exception as e:
             logger.error(f"Failed to fetch schema for {db_name}: {e}")
             # 폴백: 기본 스키마 반환
-            return await self.get_fallback_schema(db_name)
+            fallback_schema = await self.get_fallback_schema(db_name)
+            return fallback_schema, True  # fallback 사용됨
     
     async def execute_query(self, sql_query: str, database_name: str = None, user_db_id: str = None) -> str:
         """SQL 쿼리를 실행하고 결과를 반환합니다."""
