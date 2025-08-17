@@ -66,9 +66,18 @@ class SqlAgentNodes:
         
         try:
             llm = await self.llm_provider.get_llm()
+            
+            # 채팅 내역을 활용하여 의도 분류
+            input_data = {
+                "question": state['question'],
+                "chat_history": state.get('chat_history', [])
+            }
+            
             chain = self.intent_classifier_prompt | llm | StrOutputParser()
-            intent = await chain.ainvoke({"question": state['question']})
+            intent = await chain.ainvoke(input_data)
             state['intent'] = intent.strip()
+            
+            print(f"의도 분류 결과: {state['intent']}")
             return state
             
         except Exception as e:
