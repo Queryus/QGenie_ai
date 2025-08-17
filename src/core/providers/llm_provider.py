@@ -34,12 +34,9 @@ class LLMProvider:
             return self._api_key
             
         except Exception as e:
-            # 백엔드 실패 시 환경 변수로 폴백
+            # API 키 호출 실패 시 에러 발생
             logger.warning(f"Failed to fetch API key from backend: {e}, falling back to environment variable")
-            api_key = os.getenv("OPENAI_API_KEY")
-            if not api_key:
-                raise ValueError("OpenAI API 키를 가져올 수 없습니다. 백엔드와 환경 변수 모두 확인해주세요.")
-            return api_key
+            raise ValueError("OpenAI API 키를 가져올 수 없습니다.")
     
     async def get_llm(self) -> ChatOpenAI:
         """LLM 인스턴스를 비동기적으로 반환합니다."""
