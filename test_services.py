@@ -24,7 +24,7 @@ async def test_llm_provider():
         print(f"🔗 LLM 연결 상태: {'성공' if is_connected else '실패'}")
         
         # API 키 소스 확인 (로그에서 확인 가능)
-        print("💡 API 키 소스는 로그에서 확인하세요 (fallback 사용 시 경고 메시지 표시)")
+        print("💡 백엔드에서 API 키를 가져옵니다")
         
     except Exception as e:
         print(f"❌ LLM Provider 테스트 실패: {e}")
@@ -66,13 +66,9 @@ async def test_database_service():
         
         # 사용 가능한 데이터베이스 목록 조회
         try:
-            databases, is_fallback = await service.get_available_databases()
+            databases = await service.get_available_databases()
             print(f"🗄️ 사용 가능한 데이터베이스: {len(databases)}개")
-            
-            if is_fallback:
-                print("⚠️ FALLBACK 사용됨: 하드코딩된 데이터베이스 목록")
-            else:
-                print("✅ 백엔드 API에서 데이터베이스 목록을 성공적으로 가져왔습니다")
+            print("✅ 백엔드 API에서 데이터베이스 목록을 성공적으로 가져왔습니다")
             
             for db in databases[:3]:  # 처음 3개만 출력
                 print(f"  - {db.database_name}: {db.description}")
