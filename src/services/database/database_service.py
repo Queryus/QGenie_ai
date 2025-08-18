@@ -28,13 +28,12 @@ class DatabaseService:
                 api_client = await self._get_api_client()
                 self._cached_databases = await api_client.get_available_databases()
                 logger.info(f"Cached {len(self._cached_databases)} databases")
-                return self._cached_databases, False  # API에서 가져옴
+            
+            return self._cached_databases
             
         except Exception as e:
             logger.error(f"Failed to fetch databases: {e}")
-            # 폴백: 하드코딩된 데이터 반환
-            fallback_data = await self._get_fallback_databases()
-            return fallback_data, True  # fallback 사용됨
+            raise RuntimeError(f"데이터베이스 목록을 가져올 수 없습니다. 백엔드 서버를 확인해주세요: {e}")
     
     async def get_schema_for_db(self, db_name: str) -> str:
         """특정 데이터베이스의 스키마를 가져옵니다."""
@@ -44,13 +43,12 @@ class DatabaseService:
                 schema = await api_client.get_database_schema(db_name)
                 self._cached_schemas[db_name] = schema
                 logger.info(f"Cached schema for database: {db_name}")
-                return schema, False  # API에서 가져옴
+            
+            return self._cached_schemas[db_name]
             
         except Exception as e:
             logger.error(f"Failed to fetch schema for {db_name}: {e}")
-            # 폴백: 기본 스키마 반환
-            fallback_schema = await self.get_fallback_schema(db_name)
-            return fallback_schema, True  # fallback 사용됨
+            raise RuntimeError(f"데이터베이스 '{db_name}' 스키마를 가져올 수 없습니다. 백엔드 서버를 확인해주세요: {e}")
     
     async def execute_query(self, sql_query: str, database_name: str = None, user_db_id: str = None) -> str:
         """SQL 쿼리를 실행하고 결과를 반환합니다."""
@@ -71,9 +69,23 @@ class DatabaseService:
             # 백엔드 응답 코드 확인
             if response.code == "2400":
                 logger.info(f"Query executed successfully: {response.message}")
-                return "쿼리가 성공적으로 실행되었습니다."
+                
+                # 응답 데이터 형태에 따라 다른 메시지 반환
+                if hasattr(response.data, 'columns') and hasattr(response.data, 'data'):
+                    # 쿼리 결과 데이터가 있는 경우
+                    row_count = len(response.data.data)
+                    col_count = len(response.data.columns)
+                    return f"쿼리가 성공적으로 실행되었습니다. {row_count}개 행, {col_count}개 컬럼의 결과를 반환했습니다."
+                else:
+                    # 일반적인 성공 메시지
+                    return "쿼리가 성공적으로 실행되었습니다."
             else:
-                error_msg = f"쿼리 실행 실패: {response.message} (코드: {response.code})"
+                # data에 에러 메시지가 있는지 확인
+                error_detail = ""
+                if isinstance(response.data, str):
+                    error_detail = f" 상세: {response.data}"
+                
+                error_msg = f"쿼리 실행 실패: {response.message} (코드: {response.code}){error_detail}"
                 logger.error(error_msg)
                 return error_msg
                 

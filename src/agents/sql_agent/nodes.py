@@ -135,10 +135,11 @@ SQL 쿼리나 데이터 분석과 관련된 질문을 해주세요."""
             
         except Exception as e:
             print(f"데이터베이스 분류 실패: {e}")
-            # 폴백: 기본 데이터베이스 사용
-            state['selected_db'] = 'sakila'
-            state['db_schema'] = await self.database_service.get_fallback_schema('sakila')
-            return state
+            print(f"에러 타입: {type(e).__name__}")
+            print(f"에러 상세: {str(e)}")
+            
+            # 폴백 없이 에러를 다시 발생시킴
+            raise e
     
     async def sql_generator_node(self, state: SqlAgentState) -> SqlAgentState:
         """SQL 쿼리를 생성하는 노드"""
@@ -233,9 +234,12 @@ SQL 쿼리나 데이터 분석과 관련된 질문을 해주세요."""
         
         try:
             selected_db = state.get('selected_db', 'default')
+            user_db_id = state.get('user_db_id', 'TEST-USER-DB-12345')
+                        
             result = await self.database_service.execute_query(
                 state['sql_query'], 
-                database_name=selected_db
+                database_name=selected_db,
+                user_db_id=user_db_id
             )
             
             state['execution_result'] = result
@@ -250,7 +254,15 @@ SQL 쿼리나 데이터 분석과 관련된 질문을 해주세요."""
             state['validation_error_count'] = 0
             state['execution_error_count'] = state.get('execution_error_count', 0) + 1
             
+            print(f"⚠️ SQL 실행 실패 ({state['execution_error_count']}/{MAX_ERROR_COUNT}): {error_msg}")
+            
             if state['execution_error_count'] >= MAX_ERROR_COUNT:
+                print(f"🚫 SQL 실행 실패 {MAX_ERROR_COUNT}회 도달, 재시도 중단")
+                print(f"최종 에러: {error_msg}")
+                
+                # 최종 실패 시 기본 응답 설정
+                state['final_response'] = f"죄송합니다. SQL 쿼리 실행에 실패했습니다. 오류: {error_msg}"
+                
                 raise MaxRetryExceededException(
                     f"SQL 실행 실패가 {MAX_ERROR_COUNT}회 반복됨", MAX_ERROR_COUNT
                 )
