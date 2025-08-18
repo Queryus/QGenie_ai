@@ -79,9 +79,9 @@ class ChatbotService:
         if chat_history:
             for message in chat_history:
                 try:
-                    if message.role == 'user':
+                    if message.role == 'u':
                         langchain_messages.append(HumanMessage(content=message.content))
-                    elif message.role == 'assistant':
+                    elif message.role == 'a':
                         langchain_messages.append(AIMessage(content=message.content))
                 except Exception as e:
                     logger.warning(f"Failed to convert message: {e}")
