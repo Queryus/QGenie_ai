@@ -1,4 +1,4 @@
-# src/api/v1/schemas/chatbot_schemas.py
+# src/schemas/api/chat_schemas.py
 
 from pydantic import BaseModel
 from typing import List, Optional
@@ -9,8 +9,10 @@ class ChatMessage(BaseModel):
     content: str
 
 class ChatRequest(BaseModel):
+    """채팅 요청 모델"""
     question: str
     chat_history: Optional[List[ChatMessage]] = None
 
 class ChatResponse(BaseModel):
+    """채팅 응답 모델"""
     answer: str
