@@ -66,7 +66,8 @@ class ChatbotService:
             
         except Exception as e:
             logger.error(f"Chat request handling failed: {e}")
-            return f"죄송합니다. 요청 처리 중 오류가 발생했습니다: {e}"
+            # 에러 상황에서는 예외를 다시 발생시켜 라우터에서 HTTP 에러로 처리되도록 함
+            raise e
     
     async def _convert_chat_history(
         self, 
