@@ -32,12 +32,14 @@ class AnnotationRequest(BaseModel):
     dbms_type: str
     databases: List[Database]
 
-class AnnotatedColumn(Column):
+class AnnotatedColumn(BaseModel):
     """어노테이션이 추가된 컬럼 모델"""
+    column_name: str
     description: str = Field(..., description="AI가 생성한 컬럼 설명")
 
-class AnnotatedTable(Table):
+class AnnotatedTable(BaseModel):
     """어노테이션이 추가된 테이블 모델"""
+    table_name: str
     description: str = Field(..., description="AI가 생성한 테이블 설명")
     columns: List[AnnotatedColumn]
 
@@ -45,8 +47,9 @@ class AnnotatedRelationship(Relationship):
     """어노테이션이 추가된 관계 모델"""
     description: str = Field(..., description="AI가 생성한 관계 설명")
 
-class AnnotatedDatabase(Database):
+class AnnotatedDatabase(BaseModel):
     """어노테이션이 추가된 데이터베이스 모델"""
+    database_name: str
     description: str = Field(..., description="AI가 생성한 데이터베이스 설명")
     tables: List[AnnotatedTable]
     relationships: List[AnnotatedRelationship]
