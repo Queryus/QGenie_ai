@@ -104,11 +104,8 @@ class SqlAgentGraph:
             
         except Exception as e:
             print(f"그래프 실행 중 오류 발생: {e}")
-            # 에러 발생 시 기본 응답 반환
-            return {
-                **initial_state,
-                'final_response': f"죄송합니다. 처리 중 오류가 발생했습니다: {e}"
-            }
+            # 에러 발생 시 예외를 다시 발생시켜 상위 레벨에서 HTTP 에러로 처리되도록 함
+            raise e
     
     def save_graph_visualization(self, file_path: str = "sql_agent_graph.png") -> bool:
         """그래프 시각화를 파일로 저장합니다."""
