@@ -2,7 +2,7 @@
 
 import httpx
 import asyncio
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 from pydantic import BaseModel
 import logging
 
@@ -21,11 +21,16 @@ class QueryExecutionRequest(BaseModel):
     database: str
     query_text: str
 
+class QueryResultData(BaseModel):
+    """쿼리 실행 결과 데이터 모델"""
+    columns: List[str]
+    data: List[Dict[str, Any]]
+
 class QueryExecutionResponse(BaseModel):
     """쿼리 실행 응답 모델"""
     code: str
     message: str
-    data: bool
+    data: Union[QueryResultData, str, bool]  # 결과 데이터, 에러 메시지
 
 class APIClient:
     """백엔드 API와 통신하는 클라이언트 클래스"""
@@ -125,8 +130,25 @@ class APIClient:
             
             response.raise_for_status()  # HTTP 에러 시 예외 발생
             
-            data = response.json()
-            result = QueryExecutionResponse(**data)
+            response_data = response.json()
+            
+            # data 필드 타입에 따라 처리
+            raw_data = response_data.get("data")
+            parsed_data = raw_data
+            
+            # data가 객체 형태(쿼리 결과)인지 확인
+            if isinstance(raw_data, dict) and "columns" in raw_data and "data" in raw_data:
+                try:
+                    parsed_data = QueryResultData(**raw_data)
+                except Exception as e:
+                    logger.warning(f"Failed to parse query result data: {e}, using raw data")
+                    parsed_data = raw_data
+            
+            result = QueryExecutionResponse(
+                code=response_data.get("code"),
+                message=response_data.get("message"),
+                data=parsed_data
+            )
             
             if result.code == "2400":
                 logger.info(f"Query executed successfully: {result.message}")
@@ -160,11 +182,13 @@ class APIClient:
         except Exception as e:
             logger.error(f"Health check failed: {e}")
             return False
-    # TODO: API 키 호출 API 필요
+
     async def get_openai_api_key(self) -> str:
         """백엔드에서 OpenAI API 키를 가져옵니다."""
         try:
             client = await self._get_client()
+            
+            # 1단계: 암호화된 API 키 조회
             response = await client.get(
                 f"{self.base_url}/api/keys/find",
                 headers=self.headers,
@@ -187,8 +211,30 @@ class APIClient:
             if not openai_key:
                 raise ValueError("백엔드에서 OpenAI API 키를 찾을 수 없습니다.")
             
-            logger.info("Successfully fetched OpenAI API key from backend")
-            return openai_key
+            # 2단계: 복호화된 실제 API 키 조회
+            decrypt_response = await client.get(
+                f"{self.base_url}/api/keys/find/decrypted/OpenAI",
+                headers=self.headers,
+                timeout=httpx.Timeout(10.0)
+            )
+            decrypt_response.raise_for_status()
+            
+            decrypt_data = decrypt_response.json()
+            
+            # 복호화된 키 데이터에서 실제 API 키 추출
+            decrypted_keys = decrypt_data.get("data", [])
+            actual_api_key = None
+            
+            for key_info in decrypted_keys:
+                if key_info.get("service_name") == "OpenAI":
+                    actual_api_key = key_info.get("id")  # 복호화된 실제 키
+                    break
+            
+            if not actual_api_key:
+                raise ValueError("백엔드에서 복호화된 OpenAI API 키를 가져올 수 없습니다.")
+            
+            logger.info("Successfully fetched decrypted OpenAI API key from backend")
+            return actual_api_key
             
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTP error occurred while fetching API key: {e.response.status_code} - {e.response.text}")
