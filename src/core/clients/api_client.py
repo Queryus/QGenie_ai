@@ -190,7 +190,7 @@ class APIClient:
             
             # 1단계: 암호화된 API 키 조회
             response = await client.get(
-                f"{self.base_url}/api/keys/find",
+                f"{self.base_url}/api/keys/result",
                 headers=self.headers,
                 timeout=httpx.Timeout(10.0)
             )
@@ -222,13 +222,12 @@ class APIClient:
             decrypt_data = decrypt_response.json()
             
             # 복호화된 키 데이터에서 실제 API 키 추출
-            decrypted_keys = decrypt_data.get("data", [])
-            actual_api_key = None
+            data_field = decrypt_data.get("data", {})
             
-            for key_info in decrypted_keys:
-                if key_info.get("service_name") == "OpenAI":
-                    actual_api_key = key_info.get("id")  # 복호화된 실제 키
-                    break
+            if isinstance(data_field, dict) and "api_key" in data_field:
+                actual_api_key = data_field["api_key"]
+            else:
+                raise ValueError("백엔드 응답에서 API 키를 찾을 수 없습니다.")
             
             if not actual_api_key:
                 raise ValueError("백엔드에서 복호화된 OpenAI API 키를 가져올 수 없습니다.")
