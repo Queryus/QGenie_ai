@@ -55,6 +55,52 @@ async def test_api_client():
     except Exception as e:
         print(f"❌ API Client 테스트 실패: {e}")
 
+async def test_db_annotation_api():
+    """DB 어노테이션 API 테스트"""
+    print("\n🔍 DB 어노테이션 API 테스트 중...")
+    try:
+        from services.database.database_service import get_database_service
+        
+        service = await get_database_service()
+        
+        # DB 프로필 조회 테스트
+        try:
+            profiles = await service.get_db_profiles()
+            print(f"✅ DB 프로필 조회 성공: {len(profiles)}개")
+            
+            if profiles:
+                print(f"📝 첫 번째 프로필: {profiles[0].type} - {profiles[0].view_name or 'No view name'}")
+                
+                # 첫 번째 프로필의 어노테이션 조회 테스트
+                try:
+                    annotations = await service.get_db_annotations(profiles[0].id)
+                    print(f"✅ 어노테이션 조회 성공: {profiles[0].id}")
+                except Exception as e:
+                    print(f"⚠️ 어노테이션 조회 실패: {e}")
+                
+                # 통합 조회 테스트
+                try:
+                    dbs_with_annotations = await service.get_databases_with_annotations()
+                    print(f"✅ 통합 조회 성공: {len(dbs_with_annotations)}개")
+                    
+                    if dbs_with_annotations:
+                        first_db = dbs_with_annotations[0]
+                        print(f"📝 첫 번째 DB 정보:")
+                        print(f"   - Display Name: {first_db['display_name']}")
+                        print(f"   - Description: {first_db['description']}")
+                        print(f"   - Has Annotations: {'data' in first_db['annotations']}")
+                        
+                except Exception as e:
+                    print(f"⚠️ 통합 조회 실패: {e}")
+            else:
+                print("⚠️ DB 프로필이 없습니다.")
+                
+        except Exception as e:
+            print(f"⚠️ DB 프로필 조회 실패: {e}")
+            
+    except Exception as e:
+        print(f"❌ DB 어노테이션 API 테스트 실패: {e}")
+
 async def test_database_service():
     """Database Service 테스트"""
     print("\n🔍 Database Service 테스트 중...")
@@ -197,18 +243,23 @@ async def test_annotation_functionality():
                         Column(column_name="name", data_type="varchar"),
                         Column(column_name="email", data_type="varchar")
                     ],
-                    sample_rows=["1, John Doe, john@example.com"]
+                    sample_rows=[{"id": 1, "name": "John Doe", "email": "john@example.com"}]
                 )
             ],
             relationships=[]
         )
         
         try:
-            result = await service.generate_annotations(sample_database)
+            from schemas.api.annotator_schemas import AnnotationRequest
+            request = AnnotationRequest(
+                dbms_type="MySQL",
+                databases=[sample_database]
+            )
+            result = await service.generate_for_schema(request)
             print(f"✅ 어노테이션 생성 성공")
-            print(f"📝 생성된 테이블 수: {len(result.tables)}")
-            if result.tables:
-                print(f"📝 첫 번째 테이블 설명: {result.tables[0].description[:100]}...")
+            print(f"📝 생성된 데이터베이스 수: {len(result.databases)}")
+            if result.databases and result.databases[0].tables:
+                print(f"📝 첫 번째 테이블 설명: {result.databases[0].tables[0].description[:100]}...")
         except Exception as e:
             print(f"⚠️ 어노테이션 생성 실패: {e}")
             
@@ -239,8 +290,9 @@ async def main():
     # 기본 서비스 테스트
     await test_llm_provider()
     await test_api_client()
+    await test_annotation_service() 
+    await test_db_annotation_api()  # 새로운 DB 어노테이션 API 테스트 추가
     await test_database_service()
-    await test_annotation_service()
     await test_chatbot_service()
     await test_sql_agent()
     
@@ -250,6 +302,7 @@ async def main():
         client = await get_api_client()
         if await client.health_check():
             print("\n🧪 확장 테스트 시작 (백엔드 연결 확인됨)")
+            print("⚠️ 참고: 데이터베이스 API가 구현되지 않아 일부 테스트는 실패할 수 있습니다")
             await test_end_to_end_chat()
             await test_annotation_functionality()
             await test_error_scenarios()
