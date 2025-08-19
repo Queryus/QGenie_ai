@@ -190,7 +190,7 @@ class APIClient:
             
             # 1단계: 암호화된 API 키 조회
             response = await client.get(
-                f"{self.base_url}/api/keys/result",
+                f"{self.base_url}/api/keys/find",
                 headers=self.headers,
                 timeout=httpx.Timeout(10.0)
             )
