@@ -101,35 +101,69 @@ SQL 쿼리나 데이터 분석과 관련된 질문을 해주세요."""
         print("--- 0.5. DB 분류 중 ---")
         
         try:
-            # 데이터베이스 목록 가져오기
-            available_dbs = await self.database_service.get_available_databases()
+            # DBMS 프로필과 어노테이션을 함께 조회
+            available_dbs_with_annotations = await self.database_service.get_databases_with_annotations()
             
-            if not available_dbs:
-                raise DatabaseConnectionException("사용 가능한 데이터베이스가 없습니다.")
+            if not available_dbs_with_annotations:
+                raise DatabaseConnectionException("사용 가능한 DBMS가 없습니다.")
             
-            # 데이터베이스 옵션 생성
+            print(f"--- {len(available_dbs_with_annotations)}개의 DBMS 발견 ---")
+            
+            # 어노테이션 정보를 포함한 DBMS 옵션 생성
             db_options = "\n".join([
-                f"- {db.database_name}: {db.description}" 
-                for db in available_dbs
+                f"- {db['display_name']}: {db['description']}" 
+                for db in available_dbs_with_annotations
             ])
             
-            # LLM을 사용하여 적절한 데이터베이스 선택
+            # LLM을 사용하여 적절한 DBMS 선택
             llm = await self.llm_provider.get_llm()
             chain = self.db_classifier_prompt | llm | StrOutputParser()
-            selected_db_name = await chain.ainvoke({
+            selected_db_display_name = await chain.ainvoke({
                 "db_options": db_options,
                 "chat_history": state['chat_history'],
                 "question": state['question']
             })
             
-            selected_db_name = selected_db_name.strip()
-            state['selected_db'] = selected_db_name
+            selected_db_display_name = selected_db_display_name.strip()
             
-            print(f'--- 선택된 DB: {selected_db_name} ---')
+            # 선택된 display_name으로 실제 DBMS 정보 찾기
+            selected_db_info = None
+            for db in available_dbs_with_annotations:
+                if db['display_name'] == selected_db_display_name:
+                    selected_db_info = db
+                    break
             
-            # 선택된 데이터베이스의 스키마 정보 가져오기
-            db_schema = await self.database_service.get_schema_for_db(selected_db_name)
-            state['db_schema'] = db_schema
+            if not selected_db_info:
+                # 부분 매칭 시도
+                for db in available_dbs_with_annotations:
+                    if selected_db_display_name in db['display_name'] or db['display_name'] in selected_db_display_name:
+                        selected_db_info = db
+                        break
+            
+            if not selected_db_info:
+                print(f"--- 선택된 DBMS를 찾을 수 없음: {selected_db_display_name}, 첫 번째 DBMS 사용 ---")
+                selected_db_info = available_dbs_with_annotations[0]
+            
+            state['selected_db'] = selected_db_info['display_name']
+            state['selected_db_profile'] = selected_db_info['profile']
+            state['selected_db_annotations'] = selected_db_info['annotations']
+            
+            print(f'--- 선택된 DBMS: {selected_db_info["display_name"]} ---')
+            print(f'--- DBMS 프로필 ID: {selected_db_info["profile"]["id"]} ---')
+            
+            # 어노테이션 정보를 스키마로 사용
+            if selected_db_info['annotations'] and 'data' in selected_db_info['annotations']:
+                schema_info = self._convert_annotations_to_schema(selected_db_info['annotations'])
+                state['db_schema'] = schema_info
+                print(f"--- 어노테이션 기반 스키마 사용 ---")
+            else:
+                # 어노테이션이 없는 경우 기본 정보로 대체
+                schema_info = f"DBMS 유형: {selected_db_info['profile']['type']}\n"
+                schema_info += f"호스트: {selected_db_info['profile']['host']}\n"
+                schema_info += f"포트: {selected_db_info['profile']['port']}\n"
+                schema_info += "상세 스키마 정보가 없습니다. 기본 SQL 구문을 사용하세요."
+                state['db_schema'] = schema_info
+                print(f"--- 기본 DBMS 정보 사용 ---")
             
             return state
             
@@ -141,6 +175,35 @@ SQL 쿼리나 데이터 분석과 관련된 질문을 해주세요."""
             # 폴백 없이 에러를 다시 발생시킴
             raise e
     
+    def _convert_annotations_to_schema(self, annotations: dict) -> str:
+        """어노테이션 데이터를 스키마 문자열로 변환합니다."""
+        try:
+            if not annotations or 'data' not in annotations:
+                return "어노테이션 스키마 정보가 없습니다."
+            
+            # 어노테이션 구조에 따라 스키마 정보 추출
+            # 실제 어노테이션 응답 구조를 확인 후 구현 필요
+            schema_parts = []
+            schema_parts.append("=== 어노테이션 기반 스키마 정보 ===")
+            
+            annotation_data = annotations.get('data', {})
+            
+            # 어노테이션 데이터가 데이터베이스 정보를 포함하는 경우
+            if isinstance(annotation_data, dict):
+                for key, value in annotation_data.items():
+                    schema_parts.append(f"{key}: {str(value)[:200]}...")
+            elif isinstance(annotation_data, list):
+                for i, item in enumerate(annotation_data):
+                    schema_parts.append(f"항목 {i+1}: {str(item)[:200]}...")
+            else:
+                schema_parts.append(f"어노테이션 데이터: {str(annotation_data)[:500]}...")
+            
+            return "\n".join(schema_parts)
+            
+        except Exception as e:
+            print(f"어노테이션 변환 중 오류: {e}")
+            return f"어노테이션 변환 실패: {e}"
+
     async def sql_generator_node(self, state: SqlAgentState) -> SqlAgentState:
         """SQL 쿼리를 생성하는 노드"""
         print("--- 1. SQL 생성 중 ---")
@@ -234,7 +297,15 @@ SQL 쿼리나 데이터 분석과 관련된 질문을 해주세요."""
         
         try:
             selected_db = state.get('selected_db', 'default')
-            user_db_id = state.get('user_db_id', 'TEST-USER-DB-12345')
+            
+            # 선택된 DB 프로필에서 실제 DB ID 가져오기
+            db_profile = state.get('selected_db_profile')
+            if db_profile and 'id' in db_profile:
+                user_db_id = db_profile['id']
+                print(f"--- 실행용 DB 프로필 ID: {user_db_id} ---")
+            else:
+                user_db_id = 'TEST-USER-DB-12345'  # 폴백
+                print(f"--- DB 프로필이 없어 테스트 ID 사용: {user_db_id} ---")
                         
             result = await self.database_service.execute_query(
                 state['sql_query'], 
@@ -256,17 +327,7 @@ SQL 쿼리나 데이터 분석과 관련된 질문을 해주세요."""
             
             print(f"⚠️ SQL 실행 실패 ({state['execution_error_count']}/{MAX_ERROR_COUNT}): {error_msg}")
             
-            if state['execution_error_count'] >= MAX_ERROR_COUNT:
-                print(f"🚫 SQL 실행 실패 {MAX_ERROR_COUNT}회 도달, 재시도 중단")
-                print(f"최종 에러: {error_msg}")
-                
-                # 최종 실패 시 기본 응답 설정
-                state['final_response'] = f"죄송합니다. SQL 쿼리 실행에 실패했습니다. 오류: {error_msg}"
-                
-                raise MaxRetryExceededException(
-                    f"SQL 실행 실패가 {MAX_ERROR_COUNT}회 반복됨", MAX_ERROR_COUNT
-                )
-            
+            # 실행 실패 시에도 상태를 반환하여 엣지에서 판단하도록 함
             return state
     
     async def response_synthesizer_node(self, state: SqlAgentState) -> SqlAgentState:

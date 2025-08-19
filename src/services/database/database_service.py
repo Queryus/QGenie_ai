@@ -1,19 +1,28 @@
 # src/services/database/database_service.py
 
 import asyncio
-from typing import List, Optional, Dict
-from core.clients.api_client import APIClient, DatabaseInfo, get_api_client
+from typing import List, Optional, Dict, Any
+from core.clients.api_client import APIClient, DatabaseInfo, DBProfileInfo, get_api_client
 import logging
 
 logger = logging.getLogger(__name__)
 
 class DatabaseService:
-    """데이터베이스 관련 비즈니스 로직을 담당하는 서비스 클래스"""
+    """
+    데이터베이스 관련 비즈니스 로직을 담당하는 서비스 클래스
+    지연 초기화를 지원하여 BE 서버가 늦게 시작되어도 작동합니다.
+    """
     
     def __init__(self, api_client: APIClient = None):
         self.api_client = api_client
+        self._cached_db_profiles: Optional[List[DBProfileInfo]] = None
+        self._cached_annotations: Dict[str, Dict[str, Any]] = {}
+        # 호환성을 위해 유지하지만 더 이상 사용하지 않음
         self._cached_databases: Optional[List[DatabaseInfo]] = None
         self._cached_schemas: Dict[str, str] = {}
+        # 지연 초기화 관련 플래그
+        self._connection_attempted: bool = False
+        self._connection_failed: bool = False
     
     async def _get_api_client(self) -> APIClient:
         """API 클라이언트를 가져옵니다."""
@@ -22,14 +31,26 @@ class DatabaseService:
         return self.api_client
     
     async def get_available_databases(self) -> List[DatabaseInfo]:
-        """사용 가능한 데이터베이스 목록을 가져옵니다."""
+        """
+        [DEPRECATED] 사용 가능한 데이터베이스 목록을 가져옵니다.
+        대신 get_databases_with_annotations()를 사용하세요.
+        """
+        logger.warning("get_available_databases()는 deprecated입니다. get_databases_with_annotations()를 사용하세요.")
+        
+        # DBMS 프로필 기반으로 DatabaseInfo 형태로 변환하여 호환성 유지
         try:
-            if self._cached_databases is None:
-                api_client = await self._get_api_client()
-                self._cached_databases = await api_client.get_available_databases()
-                logger.info(f"Cached {len(self._cached_databases)} databases")
+            profiles = await self.get_db_profiles()
+            databases = []
             
-            return self._cached_databases
+            for profile in profiles:
+                db_info = DatabaseInfo(
+                    connection_name=f"{profile.type}_{profile.host}_{profile.port}",
+                    database_name=profile.view_name or f"{profile.type}_db",
+                    description=f"{profile.type} 데이터베이스 ({profile.host}:{profile.port})"
+                )
+                databases.append(db_info)
+            
+            return databases
             
         except Exception as e:
             logger.error(f"Failed to fetch databases: {e}")
@@ -93,51 +114,120 @@ class DatabaseService:
             logger.error(f"Error during query execution: {e}")
             return f"쿼리 실행 중 오류 발생: {e}"
     
-    async def _get_fallback_databases(self) -> List[DatabaseInfo]:
-        """API 실패 시 사용할 폴백 데이터베이스 목록"""
-        return [
-            DatabaseInfo(
-                connection_name="local_mysql",
-                database_name="sakila",
-                description="DVD 대여점 비즈니스 모델을 다루는 샘플 데이터베이스"
-            ),
-            DatabaseInfo(
-                connection_name="local_mysql", 
-                database_name="ecom_prod",
-                description="온라인 쇼핑몰의 운영 데이터베이스"
-            ),
-            DatabaseInfo(
-                connection_name="local_mysql",
-                database_name="hr_analytics", 
-                description="회사의 인사 관리 데이터베이스"
-            ),
-            DatabaseInfo(
-                connection_name="local_mysql",
-                database_name="web_logs",
-                description="웹사이트 트래픽 분석을 위한 로그 데이터베이스"
-            )
-        ]
+
     
-    async def get_fallback_schema(self, db_name: str) -> str:
-        """API 실패 시 사용할 폴백 스키마"""
-        fallback_schemas = {
-            "sakila": "CREATE TABLE actor (actor_id INT, first_name VARCHAR(45), last_name VARCHAR(45))",
-            "ecom_prod": "CREATE TABLE products (product_id INT, name VARCHAR(100), price DECIMAL(10,2))",
-            "hr_analytics": "CREATE TABLE employees (employee_id INT, name VARCHAR(100), department VARCHAR(50))",
-            "web_logs": "CREATE TABLE access_logs (log_id INT, timestamp DATETIME, ip_address VARCHAR(45))"
-        }
-        return fallback_schemas.get(db_name, "Schema information not available")
-    
+    async def get_db_profiles(self) -> List[DBProfileInfo]:
+        """
+        모든 DBMS 프로필 정보를 가져옵니다.
+        지연 초기화를 통해 BE 서버 연결이 실패해도 재시도합니다.
+        """
+        if self._cached_db_profiles is None:
+            # 이전에 연결을 시도했고 실패했다면 재시도
+            if self._connection_failed:
+                logger.info("🔄 DB 프로필 조회 재시도 중...")
+                self._connection_failed = False
+                self._connection_attempted = False
+            
+            try:
+                self._connection_attempted = True
+                api_client = await self._get_api_client()
+                self._cached_db_profiles = await api_client.get_db_profiles()
+                self._connection_failed = False
+                logger.info(f"✅ DB 프로필 조회 성공: {len(self._cached_db_profiles)}개")
+                
+            except Exception as e:
+                self._connection_failed = True
+                logger.error(f"❌ DB 프로필 조회 실패: {e}")
+                raise RuntimeError(f"DB 프로필 목록을 가져올 수 없습니다. 백엔드 서버가 실행 중인지 확인해주세요: {e}")
+        
+        return self._cached_db_profiles
+
+    async def get_db_annotations(self, db_profile_id: str) -> Dict[str, Any]:
+        """특정 DBMS의 어노테이션을 조회합니다."""
+        try:
+            if db_profile_id not in self._cached_annotations:
+                api_client = await self._get_api_client()
+                annotations = await api_client.get_db_annotations(db_profile_id)
+                self._cached_annotations[db_profile_id] = annotations
+                
+                if annotations.get("code") == "4401":
+                    logger.info(f"No annotations available for DB profile: {db_profile_id}")
+                else:
+                    logger.info(f"Cached annotations for DB profile: {db_profile_id}")
+            
+            return self._cached_annotations[db_profile_id]
+            
+        except Exception as e:
+            logger.error(f"Failed to fetch annotations for {db_profile_id}: {e}")
+            # 어노테이션이 없어도 기본 정보는 반환하도록 변경
+            return {"code": "4401", "message": "어노테이션이 없습니다", "data": []}
+
+    async def get_databases_with_annotations(self) -> List[Dict[str, Any]]:
+        """DB 프로필과 어노테이션을 함께 조회합니다."""
+        try:
+            profiles = await self.get_db_profiles()
+            result = []
+            
+            for profile in profiles:
+                annotations = await self.get_db_annotations(profile.id)
+                db_info = {
+                    "profile": profile.model_dump(),
+                    "annotations": annotations,
+                    "display_name": profile.view_name or f"{profile.type}_{profile.host}_{profile.port}",
+                    "description": self._generate_db_description(profile, annotations)
+                }
+                result.append(db_info)
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Failed to get databases with annotations: {e}")
+            raise RuntimeError(f"어노테이션이 포함된 데이터베이스 목록을 가져올 수 없습니다: {e}")
+
+    def _generate_db_description(self, profile: DBProfileInfo, annotations: Dict[str, Any]) -> str:
+        """DB 프로필과 어노테이션을 기반으로 설명을 생성합니다."""
+        try:
+            # 기본 설명
+            base_desc = f"{profile.type} 데이터베이스"
+            
+            if profile.view_name:
+                base_desc += f" ({profile.view_name})"
+            else:
+                base_desc += f" ({profile.host}:{profile.port})"
+            
+            # 어노테이션 정보 확인
+            if annotations and annotations.get("code") != "4401" and "data" in annotations:
+                # 실제 어노테이션이 있는 경우
+                base_desc += " - 어노테이션 정보 포함"
+            
+            return base_desc
+            
+        except Exception as e:
+            logger.warning(f"Failed to generate description: {e}")
+            return f"{profile.type} 데이터베이스"
+
     async def refresh_cache(self):
         """캐시를 새로고침합니다."""
+        self._cached_db_profiles = None
+        self._cached_annotations.clear()
+        # 호환성을 위해 유지
         self._cached_databases = None
         self._cached_schemas.clear()
+        # 지연 초기화 플래그 리셋
+        self._connection_attempted = False
+        self._connection_failed = False
         logger.info("Database cache refreshed")
     
     async def clear_cache(self):
         """캐시를 클리어합니다."""
+        self._cached_db_profiles = None
+        self._cached_annotations.clear()
+        # 호환성을 위해 유지
         self._cached_databases = None
         self._cached_schemas.clear()
+        # 지연 초기화 플래그 리셋
+        self._connection_attempted = False
+        self._connection_failed = False
         logger.info("Database cache cleared")
     
     async def health_check(self) -> bool:

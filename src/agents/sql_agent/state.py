@@ -1,6 +1,6 @@
 # src/agents/sql_agent/state.py
 
-from typing import List, TypedDict, Optional
+from typing import List, TypedDict, Optional, Dict, Any
 from langchain_core.messages import BaseMessage
 
 class SqlAgentState(TypedDict):
@@ -13,6 +13,8 @@ class SqlAgentState(TypedDict):
     # 데이터베이스 관련
     selected_db: Optional[str]
     db_schema: str
+    selected_db_profile: Optional[Dict[str, Any]]  # DB 프로필 정보
+    selected_db_annotations: Optional[Dict[str, Any]]  # DB 어노테이션 정보
     
     # 의도 분류 결과
     intent: str

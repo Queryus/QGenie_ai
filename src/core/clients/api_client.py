@@ -15,6 +15,24 @@ class DatabaseInfo(BaseModel):
     database_name: str
     description: str
 
+class DBProfileInfo(BaseModel):
+    """DB 프로필 정보 모델"""
+    id: str
+    type: str
+    host: Optional[str] = None
+    port: Optional[int] = None
+    name: Optional[str] = None
+    username: Optional[str] = None
+    view_name: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+class DBProfileResponse(BaseModel):
+    """DB 프로필 조회 응답 모델"""
+    code: str
+    message: str
+    data: List[DBProfileInfo]
+
 class QueryExecutionRequest(BaseModel):
     """쿼리 실행 요청 모델"""
     user_db_id: str
@@ -53,21 +71,25 @@ class APIClient:
         """HTTP 클라이언트 연결을 닫습니다."""
         if self._client and not self._client.is_closed:
             await self._client.aclose()
-    # TODO: DB 어노테이션 조회
-    async def get_available_databases(self) -> List[DatabaseInfo]:
-        """사용 가능한 데이터베이스 목록을 가져옵니다."""
+    async def get_db_profiles(self) -> List[DBProfileInfo]:
+        """모든 DBMS 프로필 정보를 가져옵니다."""
         try:
             client = await self._get_client()
             response = await client.get(
-                f"{self.base_url}/api/v1/databases",
+                f"{self.base_url}/api/user/db/find/all",
                 headers=self.headers
             )
             response.raise_for_status()
             
             data = response.json()
-            databases = [DatabaseInfo(**db) for db in data.get("databases", [])]
-            logger.info(f"Successfully fetched {len(databases)} databases")
-            return databases
+            
+            # 응답 구조 검증
+            if data.get("code") != "2102":
+                logger.warning(f"Unexpected response code: {data.get('code')}")
+            
+            profiles = [DBProfileInfo(**profile) for profile in data.get("data", [])]
+            logger.info(f"Successfully fetched {len(profiles)} DB profiles")
+            return profiles
             
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTP error occurred: {e.response.status_code} - {e.response.text}")
@@ -77,6 +99,62 @@ class APIClient:
             raise
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
+            raise
+
+    async def get_db_annotations(self, db_profile_id: str) -> Dict[str, Any]:
+        """특정 DBMS의 어노테이션을 조회합니다."""
+        try:
+            client = await self._get_client()
+            response = await client.get(
+                f"{self.base_url}/api/annotations/find/db/{db_profile_id}",
+                headers=self.headers
+            )
+            response.raise_for_status()
+            
+            data = response.json()
+            logger.info(f"Successfully fetched annotations for DB profile: {db_profile_id}")
+            return data
+            
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                # 404는 어노테이션이 없는 정상적인 상황
+                logger.info(f"No annotations found for DB profile {db_profile_id}: {e.response.text}")
+                return {"code": "4401", "message": "어노테이션이 없습니다", "data": []}
+            else:
+                logger.error(f"HTTP error occurred: {e.response.status_code} - {e.response.text}")
+                raise
+        except httpx.RequestError as e:
+            logger.error(f"Request error occurred: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error: {e}")
+            raise
+
+    async def get_available_databases(self) -> List[DatabaseInfo]:
+        """
+        [DEPRECATED] 사용 가능한 데이터베이스 목록을 가져옵니다.
+        대신 get_db_profiles()를 사용하세요.
+        """
+        logger.warning("get_available_databases()는 deprecated입니다. get_db_profiles()를 사용하세요.")
+        
+        # DBMS 프로필 기반으로 DatabaseInfo 형태로 변환하여 호환성 유지
+        try:
+            profiles = await self.get_db_profiles()
+            databases = []
+            
+            for profile in profiles:
+                db_info = DatabaseInfo(
+                    connection_name=f"{profile.type}_{profile.host}_{profile.port}",
+                    database_name=profile.view_name or f"{profile.type}_db",
+                    description=f"{profile.type} 데이터베이스 ({profile.host}:{profile.port})"
+                )
+                databases.append(db_info)
+            
+            logger.info(f"Successfully converted {len(databases)} DB profiles to DatabaseInfo")
+            return databases
+            
+        except Exception as e:
+            logger.error(f"Failed to convert DB profiles: {e}")
             raise
     # TODO: DB 스키마 조회 API 필요
     async def get_database_schema(self, database_name: str) -> str:
