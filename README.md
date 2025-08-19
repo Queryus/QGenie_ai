@@ -1,6 +1,6 @@
 # AI 모델 프로젝트
 
-이 프로젝트는 ...을 위한 AI 모델을 개발합니다.
+이 프로젝트는 DB 어노테이션과 SQL 챗봇을 위한 AI 서버를 개발합니다.
 
 ---
 
@@ -39,7 +39,7 @@
     rm -rf build dist
     
     # 실행 파일 빌드
-    pyinstaller --clean --onefile --name ai src/main.py
+    pyinstaller --clean --onefile --add-data "src/prompts:prompts" --name ai src/main.py
     ```
 
 ---
@@ -82,5 +82,5 @@ GitHub에서 새로운 태그를 발행하면 파이프라인이 자동으로 �
 ./dist/ai
 
 # 다른 터미널에서 헬스체크 요청
-curl http://localhost:<할당된 포트>/health
+curl http://localhost:<할당된 포트>/api/v1/health
 ```
