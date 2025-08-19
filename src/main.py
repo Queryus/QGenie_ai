@@ -18,9 +18,22 @@ async def lifespan(app: FastAPI):
     """애플리케이션 라이프사이클 관리"""
     logger.info("QGenie AI Chatbot 시작 중...")
     
-    # 시작 시 초기화 작업
+    # 시작 시 BE 서버 연결 체크
     try:
-        # 필요한 경우 여기에 초기화 로직 추가
+        from core.clients.api_client import get_api_client
+        api_client = await get_api_client()
+        
+        # BE 서버 상태 확인
+        if await api_client.health_check():
+            logger.info("✅ 백엔드 서버 연결 성공")
+        else:
+            logger.warning("⚠️ 백엔드 서버에 연결할 수 없습니다. 첫 요청 시 연결을 재시도합니다.")
+            
+    except Exception as e:
+        logger.warning(f"⚠️ 백엔드 서버 초기 연결 실패: {e}")
+        logger.info("🔄 서비스는 지연 초기화 모드로 시작됩니다.")
+    
+    try:
         logger.info("애플리케이션 초기화 완료")
         yield
     finally:
