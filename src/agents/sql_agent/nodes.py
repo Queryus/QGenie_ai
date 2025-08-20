@@ -473,7 +473,7 @@ SQL 쿼리나 데이터 분석과 관련된 질문을 해주세요."""
                 print(f"   (총 {len(result)}자, 잘림)")
             else:
                 print(f"   {result}")
-            print(result)
+        
             print(f"📈 상태 업데이트:")
             print(f"   - execution_result: 설정됨")
             print(f"   - validation_error_count: 0으로 리셋")
