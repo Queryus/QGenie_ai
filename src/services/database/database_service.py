@@ -88,11 +88,16 @@ class DatabaseService:
                     columns = response.data.columns
                     data_rows = response.data.data
                     
+                    # 디버깅: 응답 데이터 구조 확인
+                    logger.info(f"🔍 DB 응답 구조 - 컬럼: {columns}")
+                    logger.info(f"🔍 DB 응답 구조 - {len(data_rows)}개 행, 첫 번째 행 타입: {type(data_rows[0]) if data_rows else 'N/A'}")
+                    
                     # 테이블 형태로 결과 포매팅
                     result_text = f"쿼리 실행 결과 ({len(data_rows)}개 행, {len(columns)}개 컬럼):\n\n"
                     
-                    # 컬럼 헤더 추가
-                    header = " | ".join(columns)
+                    # 컬럼 헤더 추가 (각 컬럼을 15자로 고정폭 정렬)
+                    col_width = 15
+                    header = " | ".join(col.ljust(col_width)[:col_width] for col in columns)
                     result_text += header + "\n"
                     result_text += "-" * len(header) + "\n"
                     
@@ -100,7 +105,20 @@ class DatabaseService:
                     max_rows = min(100, len(data_rows))
                     for i in range(max_rows):
                         row = data_rows[i]
-                        row_text = " | ".join(str(cell) if cell is not None else "NULL" for cell in row)
+                        # 디버깅: 첫 번째 행만 로그 출력
+                        if i == 0:
+                            logger.info(f"   첫 번째 행 상세: {row}")
+                        
+                        # 행이 딕셔너리 형태인 경우 (백엔드에서 Dict[str, Any] 형태로 반환)
+                        if isinstance(row, dict):
+                            # 컬럼 순서대로 값을 추출하고 고정폭으로 정렬
+                            row_values = [str(row.get(col, "NULL")) if row.get(col) is not None else "NULL" for col in columns]
+                            row_text = " | ".join(val.ljust(col_width)[:col_width] for val in row_values)
+                        else:
+                            # 행이 리스트 형태인 경우 (기존 로직)
+                            row_values = [str(cell) if cell is not None else "NULL" for cell in row]
+                            row_text = " | ".join(val.ljust(col_width)[:col_width] for val in row_values)
+                        
                         result_text += row_text + "\n"
                     
                     # 행이 잘렸다면 표시
