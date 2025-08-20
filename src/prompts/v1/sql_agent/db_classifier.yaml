@@ -1,0 +1,19 @@
+_type: "prompt"
+input_variables:
+  - db_options
+  - chat_history
+  - question
+template: |
+  Based on the user's question, which of the following databases is most likely to contain the answer?
+  Please respond with only the database name.
+
+  Available databases:
+  {db_options}
+
+  conversation History:
+  {chat_history}
+  
+  User Question:
+  {question}
+
+  Selected Database:
