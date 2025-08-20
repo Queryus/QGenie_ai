@@ -53,6 +53,11 @@ class LLMProvider:
             try:
                 self._initialization_attempted = True
                 self._llm = await self._create_llm()
+                
+                # 연결 복구 감지
+                if self._initialization_failed:
+                    logger.info("🎉 LLMProvider: 백엔드 연결이 복구되어 LLM 초기화가 성공했습니다!")
+                
                 self._initialization_failed = False
                 logger.info("✅ LLM 초기화 성공")
                 

@@ -62,9 +62,18 @@ async def detailed_health_check(
             for service in services_status.values()
         )
         
+        # ConnectionMonitor 상태 정보 추가
+        try:
+            from core.monitoring.connection_monitor import get_connection_monitor
+            connection_monitor = get_connection_monitor()
+            monitor_status = connection_monitor.get_status()
+        except Exception:
+            monitor_status = {"error": "ConnectionMonitor 상태를 가져올 수 없습니다"}
+        
         return {
             "status": "healthy" if all_healthy else "partial",
             "services": services_status,
+            "connection_monitor": monitor_status,
             "timestamp": __import__("datetime").datetime.now().isoformat()
         }
         

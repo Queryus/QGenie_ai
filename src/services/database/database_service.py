@@ -135,6 +135,10 @@ class DatabaseService:
                 self._connection_failed = False
                 logger.info(f"✅ DB 프로필 조회 성공: {len(self._cached_db_profiles)}개")
                 
+                # 연결 복구 감지 (이미 APIClient에서 처리되지만 추가 로그)
+                if self._connection_failed:
+                    logger.info("🎉 DatabaseService: 백엔드 연결이 복구되어 DB 프로필 조회가 성공했습니다!")
+                
             except Exception as e:
                 self._connection_failed = True
                 logger.error(f"❌ DB 프로필 조회 실패: {e}")
