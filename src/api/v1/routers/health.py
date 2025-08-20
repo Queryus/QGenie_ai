@@ -6,6 +6,7 @@ from typing import Dict, Any
 from services.chat.chatbot_service import ChatbotService, get_chatbot_service
 from services.annotation.annotation_service import AnnotationService, get_annotation_service
 from services.database.database_service import DatabaseService, get_database_service
+from core.providers.llm_provider import get_llm_provider
 import logging
 
 logger = logging.getLogger(__name__)
@@ -82,5 +83,32 @@ async def detailed_health_check(
         return {
             "status": "unhealthy",
             "error": str(e),
+            "timestamp": __import__("datetime").datetime.now().isoformat()
+        }
+
+@router.post("/refresh-api-key")
+async def refresh_api_key() -> Dict[str, str]:
+    """
+    API 키 캐시를 무효화하여 다음 요청에서 최신 키를 조회하도록 합니다.
+    
+    Returns:
+        Dict: 새로고침 결과
+    """
+    try:
+        llm_provider = await get_llm_provider()
+        await llm_provider.refresh_api_key()
+        
+        logger.info("🔄 API 키 캐시가 무효화되었습니다")
+        return {
+            "status": "success",
+            "message": "API 키 캐시가 무효화되었습니다. 다음 요청부터 최신 키를 조회합니다.",
+            "timestamp": __import__("datetime").datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"API 키 새로고침 실패: {e}")
+        return {
+            "status": "error",
+            "message": f"API 키 새로고침 중 오류가 발생했습니다: {str(e)}",
             "timestamp": __import__("datetime").datetime.now().isoformat()
         }
