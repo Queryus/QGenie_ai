@@ -34,23 +34,14 @@ class DatabaseService:
         """
         [DEPRECATED] 사용 가능한 데이터베이스 목록을 가져옵니다.
         대신 get_databases_with_annotations()를 사용하세요.
+        
+        APIClient의 동일한 메서드로 위임합니다.
         """
         logger.warning("get_available_databases()는 deprecated입니다. get_databases_with_annotations()를 사용하세요.")
         
-        # DBMS 프로필 기반으로 DatabaseInfo 형태로 변환하여 호환성 유지
         try:
-            profiles = await self.get_db_profiles()
-            databases = []
-            
-            for profile in profiles:
-                db_info = DatabaseInfo(
-                    connection_name=f"{profile.type}_{profile.host}_{profile.port}",
-                    database_name=profile.view_name or f"{profile.type}_db",
-                    description=f"{profile.type} 데이터베이스 ({profile.host}:{profile.port})"
-                )
-                databases.append(db_info)
-            
-            return databases
+            api_client = await self._get_api_client()
+            return await api_client.get_available_databases()
             
         except Exception as e:
             logger.error(f"Failed to fetch databases: {e}")
@@ -93,10 +84,30 @@ class DatabaseService:
                 
                 # 응답 데이터 형태에 따라 다른 메시지 반환
                 if hasattr(response.data, 'columns') and hasattr(response.data, 'data'):
-                    # 쿼리 결과 데이터가 있는 경우
-                    row_count = len(response.data.data)
-                    col_count = len(response.data.columns)
-                    return f"쿼리가 성공적으로 실행되었습니다. {row_count}개 행, {col_count}개 컬럼의 결과를 반환했습니다."
+                    # 쿼리 결과 데이터가 있는 경우 - 실제 데이터를 포함하여 반환
+                    columns = response.data.columns
+                    data_rows = response.data.data
+                    
+                    # 테이블 형태로 결과 포매팅
+                    result_text = f"쿼리 실행 결과 ({len(data_rows)}개 행, {len(columns)}개 컬럼):\n\n"
+                    
+                    # 컬럼 헤더 추가
+                    header = " | ".join(columns)
+                    result_text += header + "\n"
+                    result_text += "-" * len(header) + "\n"
+                    
+                    # 데이터 행 추가 (최대 100행까지만 표시)
+                    max_rows = min(100, len(data_rows))
+                    for i in range(max_rows):
+                        row = data_rows[i]
+                        row_text = " | ".join(str(cell) if cell is not None else "NULL" for cell in row)
+                        result_text += row_text + "\n"
+                    
+                    # 행이 잘렸다면 표시
+                    if len(data_rows) > max_rows:
+                        result_text += f"\n... ({len(data_rows) - max_rows}개 행 더 있음)"
+                    
+                    return result_text
                 else:
                     # 일반적인 성공 메시지
                     return "쿼리가 성공적으로 실행되었습니다."
