@@ -14,18 +14,48 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 @router.get("/health")
-async def root_health_check() -> Dict[str, str]:
+async def root_health_check(
+    database_service: DatabaseService = Depends(get_database_service)
+) -> Dict[str, Any]:
     """
-    루트 헬스체크 엔드포인트, 서버 상태가 정상이면 'ok' 반환합니다.
+    루트 헬스체크 엔드포인트, 서버와 백엔드 연결 상태를 확인합니다.
     
     Returns:
-        Dict: 기본 상태 정보
+        Dict: 기본 상태 정보와 백엔드 연결 상태
     """
-    return {
-        "status": "ok", 
-        "message": "Welcome to the QGenie Chatbot AI!",
-        "version": "2.0.0"
-    }
+    try:
+        # 백엔드 연결 상태 확인
+        backend_healthy = await database_service.health_check()
+        
+        # 전체 상태 결정
+        overall_status = "healthy" if backend_healthy else "degraded"
+        
+        response = {
+            "status": overall_status,
+            "message": "Welcome to the QGenie Chatbot AI!",
+            "version": "2.0.0",
+            "backend_connection": "connected" if backend_healthy else "disconnected",
+            "timestamp": __import__("datetime").datetime.now().isoformat()
+        }
+        
+        if not backend_healthy:
+            response["warning"] = "백엔드 서버 연결이 불안정합니다. 일부 기능이 제한될 수 있습니다."
+            logger.warning("⚠️ 기본 헬스체크에서 백엔드 연결 실패 감지")
+        else:
+            logger.debug("✅ 기본 헬스체크: 백엔드 연결 정상")
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Basic health check failed: {e}")
+        return {
+            "status": "unhealthy",
+            "message": "QGenie Chatbot AI",
+            "version": "2.0.0",
+            "backend_connection": "error",
+            "error": "헬스체크 중 오류가 발생했습니다",
+            "timestamp": __import__("datetime").datetime.now().isoformat()
+        }
 
 @router.get("/health/detailed")
 async def detailed_health_check(
