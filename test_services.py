@@ -88,7 +88,12 @@ async def test_db_annotation_api():
                         print(f"📝 첫 번째 DB 정보:")
                         print(f"   - Display Name: {first_db['display_name']}")
                         print(f"   - Description: {first_db['description']}")
-                        print(f"   - Has Annotations: {'data' in first_db['annotations']}")
+                        annotations = first_db['annotations']
+                        has_annotations = annotations and annotations.code != "4401" and annotations.data.databases
+                        print(f"   - Has Annotations: {has_annotations}")
+                        if has_annotations:
+                            print(f"   - DB Count: {len(annotations.data.databases)}")
+                            print(f"   - DBMS Type: {annotations.data.dbms_type}")
                         
                 except Exception as e:
                     print(f"⚠️ 통합 조회 실패: {e}")

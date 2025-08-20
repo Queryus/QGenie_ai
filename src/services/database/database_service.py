@@ -2,7 +2,7 @@
 
 import asyncio
 from typing import List, Optional, Dict, Any
-from core.clients.api_client import APIClient, DatabaseInfo, DBProfileInfo, get_api_client
+from core.clients.api_client import APIClient, DatabaseInfo, DBProfileInfo, AnnotationResponse, get_api_client
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,7 @@ class DatabaseService:
     def __init__(self, api_client: APIClient = None):
         self.api_client = api_client
         self._cached_db_profiles: Optional[List[DBProfileInfo]] = None
-        self._cached_annotations: Dict[str, Dict[str, Any]] = {}
+        self._cached_annotations: Dict[str, AnnotationResponse] = {}
         # 호환성을 위해 유지하지만 더 이상 사용하지 않음
         self._cached_databases: Optional[List[DatabaseInfo]] = None
         self._cached_schemas: Dict[str, str] = {}
@@ -142,7 +142,7 @@ class DatabaseService:
         
         return self._cached_db_profiles
 
-    async def get_db_annotations(self, db_profile_id: str) -> Dict[str, Any]:
+    async def get_db_annotations(self, db_profile_id: str) -> AnnotationResponse:
         """특정 DBMS의 어노테이션을 조회합니다."""
         try:
             if db_profile_id not in self._cached_annotations:
@@ -150,7 +150,7 @@ class DatabaseService:
                 annotations = await api_client.get_db_annotations(db_profile_id)
                 self._cached_annotations[db_profile_id] = annotations
                 
-                if annotations.get("code") == "4401":
+                if annotations.code == "4401":
                     logger.info(f"No annotations available for DB profile: {db_profile_id}")
                 else:
                     logger.info(f"Cached annotations for DB profile: {db_profile_id}")
@@ -160,7 +160,20 @@ class DatabaseService:
         except Exception as e:
             logger.error(f"Failed to fetch annotations for {db_profile_id}: {e}")
             # 어노테이션이 없어도 기본 정보는 반환하도록 변경
-            return {"code": "4401", "message": "어노테이션이 없습니다", "data": []}
+            from core.clients.api_client import AnnotationResponse, AnnotationData
+            empty_annotation = AnnotationResponse(
+                code="4401",
+                message="어노테이션이 없습니다",
+                data=AnnotationData(
+                    dbms_type="unknown",
+                    databases=[],
+                    annotation_id="",
+                    db_profile_id=db_profile_id,
+                    created_at="",
+                    updated_at=""
+                )
+            )
+            return empty_annotation
 
     async def get_databases_with_annotations(self) -> List[Dict[str, Any]]:
         """DB 프로필과 어노테이션을 함께 조회합니다."""
@@ -184,7 +197,7 @@ class DatabaseService:
             logger.error(f"Failed to get databases with annotations: {e}")
             raise RuntimeError(f"어노테이션이 포함된 데이터베이스 목록을 가져올 수 없습니다: {e}")
 
-    def _generate_db_description(self, profile: DBProfileInfo, annotations: Dict[str, Any]) -> str:
+    def _generate_db_description(self, profile: DBProfileInfo, annotations: AnnotationResponse) -> str:
         """DB 프로필과 어노테이션을 기반으로 설명을 생성합니다."""
         try:
             # 기본 설명
@@ -196,9 +209,11 @@ class DatabaseService:
                 base_desc += f" ({profile.host}:{profile.port})"
             
             # 어노테이션 정보 확인
-            if annotations and annotations.get("code") != "4401" and "data" in annotations:
+            if annotations and annotations.code != "4401" and annotations.data.databases:
                 # 실제 어노테이션이 있는 경우
-                base_desc += " - 어노테이션 정보 포함"
+                db_count = len(annotations.data.databases)
+                total_tables = sum(len(db.tables) for db in annotations.data.databases)
+                base_desc += f" - {db_count}개 DB, {total_tables}개 테이블 어노테이션 포함"
             
             return base_desc
             

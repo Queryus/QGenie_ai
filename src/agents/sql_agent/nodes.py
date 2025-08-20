@@ -152,8 +152,9 @@ SQL 쿼리나 데이터 분석과 관련된 질문을 해주세요."""
             print(f'--- DBMS 프로필 ID: {selected_db_info["profile"]["id"]} ---')
             
             # 어노테이션 정보를 스키마로 사용
-            if selected_db_info['annotations'] and 'data' in selected_db_info['annotations']:
-                schema_info = self._convert_annotations_to_schema(selected_db_info['annotations'])
+            annotations = selected_db_info['annotations']
+            if annotations and annotations.code != "4401" and annotations.data.databases:
+                schema_info = self._convert_annotations_to_schema(annotations)
                 state['db_schema'] = schema_info
                 print(f"--- 어노테이션 기반 스키마 사용 ---")
             else:
@@ -175,30 +176,54 @@ SQL 쿼리나 데이터 분석과 관련된 질문을 해주세요."""
             # 폴백 없이 에러를 다시 발생시킴
             raise e
     
-    def _convert_annotations_to_schema(self, annotations: dict) -> str:
+    def _convert_annotations_to_schema(self, annotations) -> str:
         """어노테이션 데이터를 스키마 문자열로 변환합니다."""
         try:
-            if not annotations or 'data' not in annotations:
-                return "어노테이션 스키마 정보가 없습니다."
+            # AnnotationResponse 객체인지 확인
+            if hasattr(annotations, 'data') and hasattr(annotations, 'code'):
+                if annotations.code == "4401" or not annotations.data.databases:
+                    return "어노테이션 스키마 정보가 없습니다."
+                
+                schema_parts = []
+                schema_parts.append(f"=== {annotations.data.dbms_type.upper()} 어노테이션 기반 스키마 정보 ===")
+                
+                # 각 데이터베이스별 정보 추출
+                for db in annotations.data.databases:
+                    schema_parts.append(f"\n[데이터베이스: {db.db_name}]")
+                    schema_parts.append(f"설명: {db.description}")
+                    
+                    # 테이블 정보
+                    schema_parts.append(f"\n테이블 ({len(db.tables)}개):")
+                    for table in db.tables:
+                        schema_parts.append(f"\n  • {table.table_name}")
+                        schema_parts.append(f"    설명: {table.description}")
+                        schema_parts.append(f"    컬럼 ({len(table.columns)}개):")
+                        
+                        for col in table.columns:
+                            schema_parts.append(f"      - {col.column_name} ({col.data_type}): {col.description}")
+                    
+                    # 관계 정보
+                    if db.relationships:
+                        schema_parts.append(f"\n관계 ({len(db.relationships)}개):")
+                        for rel in db.relationships:
+                            rel_desc = rel.description or "관계 설명 없음"
+                            schema_parts.append(f"  • {rel.from_table}({', '.join(rel.from_columns)}) → {rel.to_table}({', '.join(rel.to_columns)})")
+                            schema_parts.append(f"    설명: {rel_desc}")
+                
+                return "\n".join(schema_parts)
             
-            # 어노테이션 구조에 따라 스키마 정보 추출
-            # 실제 어노테이션 응답 구조를 확인 후 구현 필요
-            schema_parts = []
-            schema_parts.append("=== 어노테이션 기반 스키마 정보 ===")
+            # 기존 dict 형태 처리 (호환성)
+            elif isinstance(annotations, dict):
+                if not annotations or annotations.get('code') == "4401":
+                    return "어노테이션 스키마 정보가 없습니다."
+                
+                schema_parts = []
+                schema_parts.append("=== 어노테이션 기반 스키마 정보 ===")
+                schema_parts.append(f"어노테이션 데이터: {str(annotations)[:500]}...")
+                return "\n".join(schema_parts)
             
-            annotation_data = annotations.get('data', {})
-            
-            # 어노테이션 데이터가 데이터베이스 정보를 포함하는 경우
-            if isinstance(annotation_data, dict):
-                for key, value in annotation_data.items():
-                    schema_parts.append(f"{key}: {str(value)[:200]}...")
-            elif isinstance(annotation_data, list):
-                for i, item in enumerate(annotation_data):
-                    schema_parts.append(f"항목 {i+1}: {str(item)[:200]}...")
             else:
-                schema_parts.append(f"어노테이션 데이터: {str(annotation_data)[:500]}...")
-            
-            return "\n".join(schema_parts)
+                return "어노테이션 스키마 정보가 없습니다."
             
         except Exception as e:
             print(f"어노테이션 변환 중 오류: {e}")

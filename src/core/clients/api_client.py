@@ -33,6 +33,48 @@ class DBProfileResponse(BaseModel):
     message: str
     data: List[DBProfileInfo]
 
+class AnnotationColumn(BaseModel):
+    """어노테이션 컬럼 정보 모델"""
+    column_name: str
+    description: str
+    data_type: str
+
+class AnnotationTable(BaseModel):
+    """어노테이션 테이블 정보 모델"""
+    table_name: str
+    description: str
+    columns: List[AnnotationColumn]
+
+class AnnotationRelationship(BaseModel):
+    """어노테이션 관계 정보 모델"""
+    from_table: str
+    from_columns: List[str]
+    to_table: str
+    to_columns: List[str]
+    description: Optional[str] = None
+
+class AnnotationDatabase(BaseModel):
+    """어노테이션 데이터베이스 정보 모델"""
+    db_name: str
+    description: str
+    tables: List[AnnotationTable]
+    relationships: List[AnnotationRelationship]
+
+class AnnotationData(BaseModel):
+    """어노테이션 데이터 모델"""
+    dbms_type: str
+    databases: List[AnnotationDatabase]
+    annotation_id: str
+    db_profile_id: str
+    created_at: str
+    updated_at: str
+
+class AnnotationResponse(BaseModel):
+    """어노테이션 조회 응답 모델"""
+    code: str
+    message: str
+    data: AnnotationData
+
 class QueryExecutionRequest(BaseModel):
     """쿼리 실행 요청 모델"""
     user_db_id: str
@@ -101,25 +143,41 @@ class APIClient:
             logger.error(f"Unexpected error: {e}")
             raise
 
-    async def get_db_annotations(self, db_profile_id: str) -> Dict[str, Any]:
+    async def get_db_annotations(self, db_profile_id: str) -> AnnotationResponse:
         """특정 DBMS의 어노테이션을 조회합니다."""
         try:
             client = await self._get_client()
             response = await client.get(
-                f"{self.base_url}/api/annotations/find/db/{db_profile_id}",
+                f"{self.base_url}/api/annotations/find/hierarchical/{db_profile_id}",
                 headers=self.headers
             )
             response.raise_for_status()
             
             data = response.json()
+            
+            # 응답을 AnnotationResponse 모델로 파싱
+            annotation_response = AnnotationResponse(**data)
             logger.info(f"Successfully fetched annotations for DB profile: {db_profile_id}")
-            return data
+            return annotation_response
             
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 # 404는 어노테이션이 없는 정상적인 상황
                 logger.info(f"No annotations found for DB profile {db_profile_id}: {e.response.text}")
-                return {"code": "4401", "message": "어노테이션이 없습니다", "data": []}
+                # 빈 어노테이션 응답 생성
+                empty_annotation = AnnotationResponse(
+                    code="4401",
+                    message="어노테이션이 없습니다",
+                    data=AnnotationData(
+                        dbms_type="unknown",
+                        databases=[],
+                        annotation_id="",
+                        db_profile_id=db_profile_id,
+                        created_at="",
+                        updated_at=""
+                    )
+                )
+                return empty_annotation
             else:
                 logger.error(f"HTTP error occurred: {e.response.status_code} - {e.response.text}")
                 raise
