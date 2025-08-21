@@ -21,6 +21,11 @@ template: |
     - Do not just show the raw data from the SQL result.
     - Explain what the data means in relation to the user's question.
     - Present the answer in a natural, conversational, and polite Korean.
+    - Include the SQL query used to answer the question in a code block format like this:
+      ```sql
+      SELECT * FROM table;
+      ```
+    - Format your response as: [Korean explanation] + [SQL query in code block]
   - If the process failed:
     - Apologize for the inconvenience.
     - Explain the reason for the failure in simple, non-technical terms.

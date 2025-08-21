@@ -534,6 +534,11 @@ SQL 쿼리나 데이터 분석과 관련된 질문을 해주세요."""
                 Successfully executed the SQL query to answer the user's question.
                 SQL Query: {state['sql_query']}
                 SQL Result: {state['execution_result']}
+                
+                IMPORTANT: Include the SQL query in your response using markdown code block format:
+                ```sql
+                {state['sql_query']}
+                ```
                 """
                 print(f"✅ 성공 컨텍스트 사용:")
                 print(f"   SQL: {state['sql_query']}")
