@@ -2,7 +2,7 @@
 
 import asyncio
 from typing import List, Optional, Dict, Any
-from core.clients.api_client import APIClient, DatabaseInfo, DBProfileInfo, get_api_client
+from core.clients.api_client import APIClient, DatabaseInfo, DBProfileInfo, AnnotationResponse, get_api_client
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,7 @@ class DatabaseService:
     def __init__(self, api_client: APIClient = None):
         self.api_client = api_client
         self._cached_db_profiles: Optional[List[DBProfileInfo]] = None
-        self._cached_annotations: Dict[str, Dict[str, Any]] = {}
+        self._cached_annotations: Dict[str, AnnotationResponse] = {}
         # 호환성을 위해 유지하지만 더 이상 사용하지 않음
         self._cached_databases: Optional[List[DatabaseInfo]] = None
         self._cached_schemas: Dict[str, str] = {}
@@ -34,23 +34,14 @@ class DatabaseService:
         """
         [DEPRECATED] 사용 가능한 데이터베이스 목록을 가져옵니다.
         대신 get_databases_with_annotations()를 사용하세요.
+        
+        APIClient의 동일한 메서드로 위임합니다.
         """
         logger.warning("get_available_databases()는 deprecated입니다. get_databases_with_annotations()를 사용하세요.")
         
-        # DBMS 프로필 기반으로 DatabaseInfo 형태로 변환하여 호환성 유지
         try:
-            profiles = await self.get_db_profiles()
-            databases = []
-            
-            for profile in profiles:
-                db_info = DatabaseInfo(
-                    connection_name=f"{profile.type}_{profile.host}_{profile.port}",
-                    database_name=profile.view_name or f"{profile.type}_db",
-                    description=f"{profile.type} 데이터베이스 ({profile.host}:{profile.port})"
-                )
-                databases.append(db_info)
-            
-            return databases
+            api_client = await self._get_api_client()
+            return await api_client.get_available_databases()
             
         except Exception as e:
             logger.error(f"Failed to fetch databases: {e}")
@@ -93,10 +84,48 @@ class DatabaseService:
                 
                 # 응답 데이터 형태에 따라 다른 메시지 반환
                 if hasattr(response.data, 'columns') and hasattr(response.data, 'data'):
-                    # 쿼리 결과 데이터가 있는 경우
-                    row_count = len(response.data.data)
-                    col_count = len(response.data.columns)
-                    return f"쿼리가 성공적으로 실행되었습니다. {row_count}개 행, {col_count}개 컬럼의 결과를 반환했습니다."
+                    # 쿼리 결과 데이터가 있는 경우 - 실제 데이터를 포함하여 반환
+                    columns = response.data.columns
+                    data_rows = response.data.data
+                    
+                    # 디버깅: 응답 데이터 구조 확인
+                    logger.info(f"🔍 DB 응답 구조 - 컬럼: {columns}")
+                    logger.info(f"🔍 DB 응답 구조 - {len(data_rows)}개 행, 첫 번째 행 타입: {type(data_rows[0]) if data_rows else 'N/A'}")
+                    
+                    # 테이블 형태로 결과 포매팅
+                    result_text = f"쿼리 실행 결과 ({len(data_rows)}개 행, {len(columns)}개 컬럼):\n\n"
+                    
+                    # 컬럼 헤더 추가 (각 컬럼을 15자로 고정폭 정렬)
+                    col_width = 15
+                    header = " | ".join(col.ljust(col_width)[:col_width] for col in columns)
+                    result_text += header + "\n"
+                    result_text += "-" * len(header) + "\n"
+                    
+                    # 데이터 행 추가 (최대 100행까지만 표시)
+                    max_rows = min(100, len(data_rows))
+                    for i in range(max_rows):
+                        row = data_rows[i]
+                        # 디버깅: 첫 번째 행만 로그 출력
+                        if i == 0:
+                            logger.info(f"   첫 번째 행 상세: {row}")
+                        
+                        # 행이 딕셔너리 형태인 경우 (백엔드에서 Dict[str, Any] 형태로 반환)
+                        if isinstance(row, dict):
+                            # 컬럼 순서대로 값을 추출하고 고정폭으로 정렬
+                            row_values = [str(row.get(col, "NULL")) if row.get(col) is not None else "NULL" for col in columns]
+                            row_text = " | ".join(val.ljust(col_width)[:col_width] for val in row_values)
+                        else:
+                            # 행이 리스트 형태인 경우 (기존 로직)
+                            row_values = [str(cell) if cell is not None else "NULL" for cell in row]
+                            row_text = " | ".join(val.ljust(col_width)[:col_width] for val in row_values)
+                        
+                        result_text += row_text + "\n"
+                    
+                    # 행이 잘렸다면 표시
+                    if len(data_rows) > max_rows:
+                        result_text += f"\n... ({len(data_rows) - max_rows}개 행 더 있음)"
+                    
+                    return result_text
                 else:
                     # 일반적인 성공 메시지
                     return "쿼리가 성공적으로 실행되었습니다."
@@ -135,6 +164,10 @@ class DatabaseService:
                 self._connection_failed = False
                 logger.info(f"✅ DB 프로필 조회 성공: {len(self._cached_db_profiles)}개")
                 
+                # 연결 복구 감지 (이미 APIClient에서 처리되지만 추가 로그)
+                if self._connection_failed:
+                    logger.info("🎉 DatabaseService: 백엔드 연결이 복구되어 DB 프로필 조회가 성공했습니다!")
+                
             except Exception as e:
                 self._connection_failed = True
                 logger.error(f"❌ DB 프로필 조회 실패: {e}")
@@ -142,7 +175,7 @@ class DatabaseService:
         
         return self._cached_db_profiles
 
-    async def get_db_annotations(self, db_profile_id: str) -> Dict[str, Any]:
+    async def get_db_annotations(self, db_profile_id: str) -> AnnotationResponse:
         """특정 DBMS의 어노테이션을 조회합니다."""
         try:
             if db_profile_id not in self._cached_annotations:
@@ -150,7 +183,7 @@ class DatabaseService:
                 annotations = await api_client.get_db_annotations(db_profile_id)
                 self._cached_annotations[db_profile_id] = annotations
                 
-                if annotations.get("code") == "4401":
+                if annotations.code == "4401":
                     logger.info(f"No annotations available for DB profile: {db_profile_id}")
                 else:
                     logger.info(f"Cached annotations for DB profile: {db_profile_id}")
@@ -160,7 +193,20 @@ class DatabaseService:
         except Exception as e:
             logger.error(f"Failed to fetch annotations for {db_profile_id}: {e}")
             # 어노테이션이 없어도 기본 정보는 반환하도록 변경
-            return {"code": "4401", "message": "어노테이션이 없습니다", "data": []}
+            from core.clients.api_client import AnnotationResponse, AnnotationData
+            empty_annotation = AnnotationResponse(
+                code="4401",
+                message="어노테이션이 없습니다",
+                data=AnnotationData(
+                    dbms_type="unknown",
+                    databases=[],
+                    annotation_id="",
+                    db_profile_id=db_profile_id,
+                    created_at="",
+                    updated_at=""
+                )
+            )
+            return empty_annotation
 
     async def get_databases_with_annotations(self) -> List[Dict[str, Any]]:
         """DB 프로필과 어노테이션을 함께 조회합니다."""
@@ -184,7 +230,7 @@ class DatabaseService:
             logger.error(f"Failed to get databases with annotations: {e}")
             raise RuntimeError(f"어노테이션이 포함된 데이터베이스 목록을 가져올 수 없습니다: {e}")
 
-    def _generate_db_description(self, profile: DBProfileInfo, annotations: Dict[str, Any]) -> str:
+    def _generate_db_description(self, profile: DBProfileInfo, annotations: AnnotationResponse) -> str:
         """DB 프로필과 어노테이션을 기반으로 설명을 생성합니다."""
         try:
             # 기본 설명
@@ -196,9 +242,11 @@ class DatabaseService:
                 base_desc += f" ({profile.host}:{profile.port})"
             
             # 어노테이션 정보 확인
-            if annotations and annotations.get("code") != "4401" and "data" in annotations:
+            if annotations and annotations.code != "4401" and annotations.data.databases:
                 # 실제 어노테이션이 있는 경우
-                base_desc += " - 어노테이션 정보 포함"
+                db_count = len(annotations.data.databases)
+                total_tables = sum(len(db.tables) for db in annotations.data.databases)
+                base_desc += f" - {db_count}개 DB, {total_tables}개 테이블 어노테이션 포함"
             
             return base_desc
             

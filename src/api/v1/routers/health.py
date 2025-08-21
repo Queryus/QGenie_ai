@@ -6,6 +6,7 @@ from typing import Dict, Any
 from services.chat.chatbot_service import ChatbotService, get_chatbot_service
 from services.annotation.annotation_service import AnnotationService, get_annotation_service
 from services.database.database_service import DatabaseService, get_database_service
+from core.providers.llm_provider import get_llm_provider
 import logging
 
 logger = logging.getLogger(__name__)
@@ -13,18 +14,48 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 @router.get("/health")
-async def root_health_check() -> Dict[str, str]:
+async def root_health_check(
+    database_service: DatabaseService = Depends(get_database_service)
+) -> Dict[str, Any]:
     """
-    루트 헬스체크 엔드포인트, 서버 상태가 정상이면 'ok' 반환합니다.
+    루트 헬스체크 엔드포인트, 서버와 백엔드 연결 상태를 확인합니다.
     
     Returns:
-        Dict: 기본 상태 정보
+        Dict: 기본 상태 정보와 백엔드 연결 상태
     """
-    return {
-        "status": "ok", 
-        "message": "Welcome to the QGenie Chatbot AI!",
-        "version": "2.0.0"
-    }
+    try:
+        # 백엔드 연결 상태 확인
+        backend_healthy = await database_service.health_check()
+        
+        # 전체 상태 결정
+        overall_status = "healthy" if backend_healthy else "degraded"
+        
+        response = {
+            "status": overall_status,
+            "message": "Welcome to the QGenie Chatbot AI!",
+            "version": "2.0.0",
+            "backend_connection": "connected" if backend_healthy else "disconnected",
+            "timestamp": __import__("datetime").datetime.now().isoformat()
+        }
+        
+        if not backend_healthy:
+            response["warning"] = "백엔드 서버 연결이 불안정합니다. 일부 기능이 제한될 수 있습니다."
+            logger.warning("⚠️ 기본 헬스체크에서 백엔드 연결 실패 감지")
+        else:
+            logger.debug("✅ 기본 헬스체크: 백엔드 연결 정상")
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Basic health check failed: {e}")
+        return {
+            "status": "unhealthy",
+            "message": "QGenie Chatbot AI",
+            "version": "2.0.0",
+            "backend_connection": "error",
+            "error": "헬스체크 중 오류가 발생했습니다",
+            "timestamp": __import__("datetime").datetime.now().isoformat()
+        }
 
 @router.get("/health/detailed")
 async def detailed_health_check(
@@ -62,9 +93,18 @@ async def detailed_health_check(
             for service in services_status.values()
         )
         
+        # ConnectionMonitor 상태 정보 추가
+        try:
+            from core.monitoring.connection_monitor import get_connection_monitor
+            connection_monitor = get_connection_monitor()
+            monitor_status = connection_monitor.get_status()
+        except Exception:
+            monitor_status = {"error": "ConnectionMonitor 상태를 가져올 수 없습니다"}
+        
         return {
             "status": "healthy" if all_healthy else "partial",
             "services": services_status,
+            "connection_monitor": monitor_status,
             "timestamp": __import__("datetime").datetime.now().isoformat()
         }
         
@@ -73,5 +113,32 @@ async def detailed_health_check(
         return {
             "status": "unhealthy",
             "error": str(e),
+            "timestamp": __import__("datetime").datetime.now().isoformat()
+        }
+
+@router.post("/refresh-api-key")
+async def refresh_api_key() -> Dict[str, str]:
+    """
+    API 키 캐시를 무효화하여 다음 요청에서 최신 키를 조회하도록 합니다.
+    
+    Returns:
+        Dict: 새로고침 결과
+    """
+    try:
+        llm_provider = await get_llm_provider()
+        await llm_provider.refresh_api_key()
+        
+        logger.info("🔄 API 키 캐시가 무효화되었습니다")
+        return {
+            "status": "success",
+            "message": "API 키 캐시가 무효화되었습니다. 다음 요청부터 최신 키를 조회합니다.",
+            "timestamp": __import__("datetime").datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"API 키 새로고침 실패: {e}")
+        return {
+            "status": "error",
+            "message": f"API 키 새로고침 중 오류가 발생했습니다: {str(e)}",
             "timestamp": __import__("datetime").datetime.now().isoformat()
         }

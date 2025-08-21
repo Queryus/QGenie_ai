@@ -6,6 +6,8 @@ from typing import List, Dict, Any, Optional, Union
 from pydantic import BaseModel
 import logging
 
+# ConnectionMonitor import는 순환 import를 피하기 위해 함수 내에서 처리
+
 # 로깅 설정
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,48 @@ class DBProfileResponse(BaseModel):
     code: str
     message: str
     data: List[DBProfileInfo]
+
+class AnnotationColumn(BaseModel):
+    """어노테이션 컬럼 정보 모델"""
+    column_name: str
+    description: str
+    data_type: str
+
+class AnnotationTable(BaseModel):
+    """어노테이션 테이블 정보 모델"""
+    table_name: str
+    description: str
+    columns: List[AnnotationColumn]
+
+class AnnotationRelationship(BaseModel):
+    """어노테이션 관계 정보 모델"""
+    from_table: str
+    from_columns: List[str]
+    to_table: str
+    to_columns: List[str]
+    description: Optional[str] = None
+
+class AnnotationDatabase(BaseModel):
+    """어노테이션 데이터베이스 정보 모델"""
+    db_name: str
+    description: str
+    tables: List[AnnotationTable]
+    relationships: List[AnnotationRelationship]
+
+class AnnotationData(BaseModel):
+    """어노테이션 데이터 모델"""
+    dbms_type: str
+    databases: List[AnnotationDatabase]
+    annotation_id: str
+    db_profile_id: str
+    created_at: str
+    updated_at: str
+
+class AnnotationResponse(BaseModel):
+    """어노테이션 조회 응답 모델"""
+    code: str
+    message: str
+    data: AnnotationData
 
 class QueryExecutionRequest(BaseModel):
     """쿼리 실행 요청 모델"""
@@ -60,12 +104,20 @@ class APIClient:
             "Content-Type": "application/json"
         }
         self._client: Optional[httpx.AsyncClient] = None
+        self._connection_monitor = None  # 지연 초기화
     
     async def _get_client(self) -> httpx.AsyncClient:
         """재사용 가능한 HTTP 클라이언트를 반환합니다."""
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(timeout=self.timeout)
         return self._client
+    
+    def _get_connection_monitor(self):
+        """ConnectionMonitor 인스턴스를 지연 로딩으로 가져옵니다."""
+        if self._connection_monitor is None:
+            from core.monitoring.connection_monitor import get_connection_monitor
+            self._connection_monitor = get_connection_monitor()
+        return self._connection_monitor
     
     async def close(self):
         """HTTP 클라이언트 연결을 닫습니다."""
@@ -89,37 +141,64 @@ class APIClient:
             
             profiles = [DBProfileInfo(**profile) for profile in data.get("data", [])]
             logger.info(f"Successfully fetched {len(profiles)} DB profiles")
+            
+            # 연결 복구 확인
+            monitor = self._get_connection_monitor()
+            await monitor.check_api_call_recovery("DB 프로필 조회")
+            
             return profiles
             
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTP error occurred: {e.response.status_code} - {e.response.text}")
+            monitor = self._get_connection_monitor()
+            monitor.mark_api_call_failure("DB 프로필 조회")
             raise
         except httpx.RequestError as e:
             logger.error(f"Request error occurred: {e}")
+            monitor = self._get_connection_monitor()
+            monitor.mark_api_call_failure("DB 프로필 조회")
             raise
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
+            monitor = self._get_connection_monitor()
+            monitor.mark_api_call_failure("DB 프로필 조회")
             raise
 
-    async def get_db_annotations(self, db_profile_id: str) -> Dict[str, Any]:
+    async def get_db_annotations(self, db_profile_id: str) -> AnnotationResponse:
         """특정 DBMS의 어노테이션을 조회합니다."""
         try:
             client = await self._get_client()
             response = await client.get(
-                f"{self.base_url}/api/annotations/find/db/{db_profile_id}",
+                f"{self.base_url}/api/annotations/find/hierarchical/{db_profile_id}",
                 headers=self.headers
             )
             response.raise_for_status()
             
             data = response.json()
+            
+            # 응답을 AnnotationResponse 모델로 파싱
+            annotation_response = AnnotationResponse(**data)
             logger.info(f"Successfully fetched annotations for DB profile: {db_profile_id}")
-            return data
+            return annotation_response
             
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 # 404는 어노테이션이 없는 정상적인 상황
                 logger.info(f"No annotations found for DB profile {db_profile_id}: {e.response.text}")
-                return {"code": "4401", "message": "어노테이션이 없습니다", "data": []}
+                # 빈 어노테이션 응답 생성
+                empty_annotation = AnnotationResponse(
+                    code="4401",
+                    message="어노테이션이 없습니다",
+                    data=AnnotationData(
+                        dbms_type="unknown",
+                        databases=[],
+                        annotation_id="",
+                        db_profile_id=db_profile_id,
+                        created_at="",
+                        updated_at=""
+                    )
+                )
+                return empty_annotation
             else:
                 logger.error(f"HTTP error occurred: {e.response.status_code} - {e.response.text}")
                 raise
@@ -256,9 +335,21 @@ class APIClient:
                 f"{self.base_url}/health",
                 timeout=httpx.Timeout(5.0)
             )
-            return response.status_code == 200
+            is_healthy = response.status_code == 200
+            
+            monitor = self._get_connection_monitor()
+            if is_healthy:
+                # 헬스체크 성공 시 연결 복구 확인
+                await monitor.check_api_call_recovery("헬스체크")
+            else:
+                # 헬스체크 실패 시 상태 업데이트
+                monitor.mark_api_call_failure("헬스체크")
+            
+            return is_healthy
         except Exception as e:
             logger.error(f"Health check failed: {e}")
+            monitor = self._get_connection_monitor()
+            monitor.mark_api_call_failure("헬스체크")
             return False
 
     async def get_openai_api_key(self) -> str:
